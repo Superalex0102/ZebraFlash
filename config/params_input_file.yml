@@ -1,0 +1,28 @@
+{
+  # Main parameters
+  video_src: "..\\..\\input\\out2.mp4v",  # Path of the input file.
+  res_ratio: 0.14,        # Scale resolution for computing optical flow
+  # The image processing area (area of interest) can be defined with the following margins
+  upper_margin: 220,      # MASK_X_MIN
+  bottom_margin: 150,     # MASK_X_MAX
+  left_margin: 370,       # MASK_Y_MIN
+  right_margin: 700,      # MASK_Y_MAX
+
+  # Parameters to fine tune optical flow algorithm
+  angle_min: 215,         # Movement between these two angles should be detected
+  angle_max: 315,         # Movement between these two angles should be detected
+  pyr_scale: 0.5,         # Image scale (<1) to build pyramids for each image
+  levels: 2,              # Number of pyramid layers
+  winsize: 25,            # Averaging window size
+  iterations: 2,          # Number of iterations the algorithm does at each pyramid level
+  poly_n: 3,              # Size of the pixel neighborhood used to find polynomial expansion in each pixel
+  poly_sigma: 1.1,        # Standard deviation of the Gaussian that is used to smooth derivatives used as a basis for the polynomial expansion
+
+  # Other parameters
+  threshold: 2.5,         # Threshold value for magnitude
+  size: 11,               # Size of accumulator for directions map
+  binary_threshold: 150,  # Only take different areas that are different enough (0-255)
+  threshold_count: 0,     # minimum number of different pixels from the background model
+  show_cropped: false,     # show the cropped image instead of the original frame
+  seek: 25000,            # video starting position in milliseconds
+}
