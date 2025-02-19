@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.30)
+cmake_minimum_required(VERSION 3.10)
 project(ZebraFlash)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -12,6 +12,12 @@ FetchContent_Declare(
         GIT_TAG master
 )
 FetchContent_MakeAvailable(yaml-cpp)
+
+if(DEFINED ENV{OPENCV_DIR})
+    set(OpenCV_DIR $ENV{OPENCV_DIR})
+else()
+    message(FATAL_ERROR "OpenCV_DIR environment variable not set.")
+endif()
 
 find_package(OpenCV REQUIRED)
 
