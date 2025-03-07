@@ -24,6 +24,37 @@ float calculateMode(const cv::Mat& mat) {
     return (mode != frequency.end()) ? mode->first : 0.0f;
 }
 
+void roll(std::vector<std::vector<int>>& map) {
+    if (map.empty()) {
+        return;
+    }
+
+    std::vector<int> first_row = map[0];
+
+    for (size_t i = 0; i < map.size() - 1; ++i) {
+        map[i] = map[i + 1];
+    }
+
+    map[map.size() - 1] = first_row;
+}
+
+int calculateMaxMeanColumn(const std::vector<std::vector<int>>& map) {
+    if (map.empty() || map[0].empty()) return -1;
+
+    size_t cols = map[0].size();
+    std::vector<float> column_means(cols, 0.0f);
+
+    for (size_t j = 0; j < cols; ++j) {
+        float sum = 0.0f;
+        for (size_t i = 0; i < map.size(); ++i) {
+            sum += map[i][j];
+        }
+        column_means[j] = sum / map.size();
+    }
+
+    return std::distance(column_means.begin(), std::max_element(column_means.begin(), column_means.end()));
+}
+
 int main() {
     YAML::Node config = YAML::LoadFile(INPUT_FILE);
 
@@ -113,16 +144,17 @@ int main() {
 
         cv::Mat mask = mag > threshold;
 
-        cv::Mat move_sense;
-        ang.copyTo(move_sense, mask);
+        std::vector<float> move_sense;
+        ang.reshape(1, 1).copyTo(move_sense);
 
-        int angle_offset = 0;
-        bool is_moving_up = std::any_of(move_sense.begin<>, move_sense.end<>,
+        bool is_moving_up = std::any_of(move_sense.begin(), move_sense.end(),
             [angle_min, angle_max](float m) {
                 return (m >= angle_min && m <= angle_max);
             });
 
-        float move_mode = calculateMode(move_sense);
+        cv::Mat move_sense_mat(move_sense);
+
+        float move_mode = calculateMode(move_sense_mat);
 
         if (is_moving_up) {
             directions_map[directions_map.size() - 1][0] = 3.5f;
@@ -160,7 +192,55 @@ int main() {
             }
         }
 
-        cv::imshow(WINDOW_NAME, frame);
+        roll(directions_map);
+
+        int loc = calculateMaxMeanColumn(directions_map);
+
+        std::string text;
+        if (loc == 0) {
+            text = "Moving up (LED ON!)";
+        }
+        else if (loc == 1) {
+            text = "Other directions";
+        }
+        else if (loc == 2) {
+            text = "Difference (LED ON!)";
+        }
+        else {
+            text = "WAITING";
+        }
+
+        std::vector<cv::Mat> hsv_channels(3);
+        cv::split(hsv, hsv_channels);
+        ang_180.copyTo(hsv_channels[0]);
+
+        cv::normalize(mag, hsv_channels[2], 0, 255, cv::NORM_MINMAX);
+
+        //FIXME
+        //cv::merge(hsv_channels, hsv);
+
+        cv::Mat rgb;
+        cv::cvtColor(hsv, rgb, cv::COLOR_HSV2BGR);
+
+        int text_thinkness = 6;
+        if (show_cropped) {
+            text_thinkness = 2;
+        }
+
+        cv::putText(frame, text, cv::Point(30, 90), cv::FONT_HERSHEY_COMPLEX,
+            frame.cols / 500.0, cv::Scalar(0, 0, 255), text_thinkness);
+
+        cv::putText(orig_frame, text, cv::Point(30, 90), cv::FONT_HERSHEY_COMPLEX,
+            orig_frame.cols / 500.0, cv::Scalar(0, 0, 255), text_thinkness);
+
+        if (show_cropped) {
+            cv::imshow(WINDOW_NAME, frame);
+        }
+        else {
+            cv::rectangle(orig_frame, cv::Point(mask_y_min, mask_x_min), cv::Point(mask_y_max, mask_x_max),
+                cv::Scalar(0, 255, 0), 3);
+            cv::imshow(WINDOW_NAME, orig_frame);
+        }
 
         if (cv::waitKey(1) == 'q') {
             break;
