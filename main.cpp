@@ -5,23 +5,26 @@ const std::string INPUT_FILE = "..\\config\\params_input_file.yml";
 const std::string WINDOW_NAME = "window";
 
 float calculateMode(const cv::Mat& mat) {
-    std::unordered_map<float, int> frequency;
+    cv::Mat sorted;
+    mat.reshape(1, 1).copyTo(sorted);
+    cv::sort(sorted, sorted, cv::SORT_ASCENDING);
 
-    std::vector<float> vec;
-    mat.reshape(1, 1).copyTo(vec);
+    float mode = sorted.at<float>(0);
+    int max_count = 1, count = 1;
 
-    for (float v : vec) {
-        if (v != 0.0f) {
-            frequency[v]++;
+    for (int i = 1; i < sorted.total(); i++) {
+        if (sorted.at<float>(i) == sorted.at<float>(i - 1)) {
+            count++;
+        } else {
+            if (count > max_count) {
+                max_count = count;
+                mode = sorted.at<float>(i - 1);
+            }
+            count = 1;
         }
     }
 
-    auto mode = std::max_element(frequency.begin(), frequency.end(),
-        [](const auto& a, const auto& b) {
-            return a.second < b.second;
-        });
-
-    return (mode != frequency.end()) ? mode->first : 0.0f;
+    return mode;
 }
 
 void roll(std::vector<std::vector<int>>& map) {
@@ -147,14 +150,10 @@ int main() {
         std::vector<float> move_sense;
         ang.reshape(1, 1).copyTo(move_sense);
 
-        bool is_moving_up = std::any_of(move_sense.begin(), move_sense.end(),
-            [angle_min, angle_max](float m) {
-                return (m >= angle_min && m <= angle_max);
-            });
-
         cv::Mat move_sense_mat(move_sense);
 
         float move_mode = calculateMode(move_sense_mat);
+        bool is_moving_up = (move_mode >= angle_min && move_mode <= angle_max);
 
         if (is_moving_up) {
             directions_map[directions_map.size() - 1][0] = 3.5f;
@@ -210,14 +209,28 @@ int main() {
             text = "WAITING";
         }
 
-        std::vector<cv::Mat> hsv_channels(3);
+        if (hsv.empty() || hsv.type() != CV_8UC3) {
+            hsv = cv::Mat(frame_previous.size(), CV_8UC3, cv::Scalar(0, 255, 0));
+        }
+
+        std::vector<cv::Mat> hsv_channels;
         cv::split(hsv, hsv_channels);
-        ang_180.copyTo(hsv_channels[0]);
 
-        cv::normalize(mag, hsv_channels[2], 0, 255, cv::NORM_MINMAX);
+        if (hsv_channels.size() == 3) {
+            if (ang_180.size() != hsv_channels[0].size()) {
+                cv::resize(ang_180, ang_180, hsv_channels[0].size());
+            }
+            ang_180.convertTo(hsv_channels[0], hsv_channels[0].type());
 
-        //FIXME
-        //cv::merge(hsv_channels, hsv);
+            if (mag.size() != hsv_channels[2].size()) {
+                cv::resize(mag, mag, hsv_channels[2].size());
+            }
+            cv::normalize(mag, hsv_channels[2], 0, 255, cv::NORM_MINMAX, CV_8U);
+
+            cv::merge(hsv_channels, hsv);
+        } else {
+            std::cerr << "Error: hsv_channels does not have 3 elements!" << std::endl;
+        }
 
         cv::Mat rgb;
         cv::cvtColor(hsv, rgb, cv::COLOR_HSV2BGR);
