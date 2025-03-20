@@ -101,7 +101,7 @@ int main() {
 
     frame_previous = frame_previous(cv::Range(mask_x_min, mask_x_max), cv::Range(mask_y_min, mask_y_max));
 
-    cv::Size res(w * res_ratio, h * res_ratio);
+    cv::Size res(static_cast<int>(w * res_ratio), static_cast<int>(h * res_ratio));
     cv::Mat frame_resized;
     cv::resize(frame_previous, frame_resized, res, 0, 0, cv::INTER_CUBIC);
 
@@ -130,6 +130,9 @@ int main() {
         cv::Mat gray;
         cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
 
+        //cv::setNumThreads(4);
+
+        //Motion detection
         cv::Mat flow;
         cv::calcOpticalFlowFarneback(gray_previous, gray, flow, pyr_scale, levels,
             winsize, iterations, poly_n, poly_sigma, cv::OPTFLOW_LK_GET_MIN_EIGENVALS);
