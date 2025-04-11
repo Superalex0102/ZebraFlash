@@ -39,7 +39,7 @@ private:
     cv::Ptr<cv::BackgroundSubtractor> backSub;
 
     void loadConfig(const std::string& configFile);
-    float calculateMode(const cv::Mat& mat);
+    float calculateMode(const std::vector<float>& values);
     void roll(std::vector<std::vector<int>>& map);
     int calculateMaxMeanColumn(const std::vector<std::vector<int>>& map);
     void processFrame(cv::Mat& frame, cv::Mat& orig_frame, cv::Mat& gray_previous);

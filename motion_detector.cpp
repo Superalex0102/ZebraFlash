@@ -33,26 +33,25 @@ void MotionDetector::loadConfig(const std::string &configFile) {
     poly_sigma = config["poly_sigma"].as<double>();
 }
 
-float MotionDetector::calculateMode(const cv::Mat& mat) {
-    cv::Mat sorted;
-    mat.reshape(1, 1).copyTo(sorted);
-    cv::sort(sorted, sorted, cv::SORT_ASCENDING);
-
-    float mode = sorted.at<float>(0);
-    int max_count = 1, count = 1;
-
-    for (int i = 1; i < sorted.total(); i++) {
-        if (sorted.at<float>(i) == sorted.at<float>(i - 1)) {
-            count++;
-        } else {
-            if (count > max_count) {
-                max_count = count;
-                mode = sorted.at<float>(i - 1);
-            }
-            count = 1;
-        }
+float MotionDetector::calculateMode(const std::vector<float>& values) {
+    if (values.empty()) {
+        std::cerr << "Error: No data available to calculate mode." << std::endl;
+        return std::numeric_limits<float>::quiet_NaN();
     }
 
+    std::map<float, int> frequency_map;
+    for (const float& value : values) {
+        frequency_map[value]++;
+    }
+
+    float mode = values[0];
+    int max_count = 0;
+    for (const auto& pair : frequency_map) {
+        if (pair.second > max_count) {
+            mode = pair.first;
+            max_count = pair.second;
+        }
+    }
     return mode;
 }
 
@@ -102,11 +101,18 @@ void MotionDetector::detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_p
     cv::Mat mask = mag > threshold;
 
     std::vector<float> move_sense;
-    ang.reshape(1, 1).copyTo(move_sense);
+    for (int i = 0; i < ang.rows; ++i) {
+        for (int j = 0; j < ang.cols; ++j) {
+            if (mask.at<uchar>(i, j)) {
+                move_sense.push_back(ang.at<float>(i, j));
+            }
+        }
+    }
 
-    cv::Mat move_sense_mat(move_sense);
-    float move_mode = calculateMode(move_sense_mat);
+    float move_mode = calculateMode(move_sense);
     bool is_moving_up = (move_mode >= angle_min && move_mode <= angle_max);
+
+    std::cout << move_mode << std::endl;
 
     if (is_moving_up) {
         directions_map[directions_map.size() - 1][0] = 3.5f;
