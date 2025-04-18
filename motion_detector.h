@@ -32,6 +32,7 @@ private:
     int iterations;
     int poly_n;
     double poly_sigma;
+    bool debug;
 
     const std::string WINDOW_NAME = "window";
 

@@ -24,5 +24,6 @@
   binary_threshold: 150,  # Only take different areas that are different enough (0-255)
   threshold_count: 0,     # minimum number of different pixels from the background model
   show_cropped: false,     # show the cropped image instead of the original frame
-  seek: 40000,            # video starting position in milliseconds
+  seek: 25000,            # video starting position in milliseconds
+  debug: true,
 }

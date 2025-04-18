@@ -5,7 +5,7 @@
 MotionDetector::MotionDetector(const std::string &configFile) {
     loadConfig(configFile);
     directions_map.resize(size, std::vector<int>(4, 0));
-    backSub = cv::createBackgroundSubtractorMOG2();
+    backSub = cv::createBackgroundSubtractorMOG2(500, 16, true);
 }
 
 void MotionDetector::loadConfig(const std::string &configFile) {
@@ -31,6 +31,7 @@ void MotionDetector::loadConfig(const std::string &configFile) {
     iterations = config["iterations"].as<int>();
     poly_n = config["poly_n"].as<int>();
     poly_sigma = config["poly_sigma"].as<double>();
+    debug = config["debug"].as<bool>();
 }
 
 float MotionDetector::calculateMode(const std::vector<float>& values) {
@@ -135,6 +136,10 @@ void MotionDetector::detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_p
 
         cv::Mat tresh_frame;
         cv::threshold(fg_mask_blurred, tresh_frame, binary_threshold, 255, cv::THRESH_BINARY);
+
+        if (debug) {
+            cv::imshow("tresh_frame", tresh_frame);
+        }
 
         if (cv::countNonZero(tresh_frame) > threshold_count) {
             directions_map[directions_map.size() - 1][0] = 0;
