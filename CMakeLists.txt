@@ -15,8 +15,6 @@ FetchContent_MakeAvailable(yaml-cpp)
 
 if(DEFINED ENV{OPENCV_DIR})
     set(OpenCV_DIR $ENV{OPENCV_DIR})
-else()
-    message(FATAL_ERROR "OpenCV_DIR environment variable not set.")
 endif()
 
 find_package(OpenCV REQUIRED)

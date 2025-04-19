@@ -77,3 +77,4 @@ fabric.properties
 .idea/
 cmake-build-debug/
 input/
+_deps/

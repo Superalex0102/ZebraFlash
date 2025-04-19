@@ -3,7 +3,7 @@
 
 #include "motion_detector.h"
 
-const std::string INPUT_FILE = "..\\config\\params_input_file.yml";
+const std::string INPUT_FILE = "../config/params_input_file.yml";
 
 int main() {
     try {
