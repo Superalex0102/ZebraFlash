@@ -21,8 +21,10 @@ private:
     int mask_y_max;
     double res_ratio;
     double threshold;
-    int angle_min;
-    int angle_max;
+    int angle_up_min;
+    int angle_up_max;
+    int angle_down_min;
+    int angle_down_max;
     int binary_threshold;
     int threshold_count;
     bool show_cropped;
@@ -45,7 +47,7 @@ private:
     void roll(std::vector<std::vector<int>>& map);
     int calculateMaxMeanColumn(const std::vector<std::vector<int>>& map);
     void processFrame(cv::UMat& frame, cv::UMat& orig_frame, cv::UMat& gray_previous);
-    void detectMotion(cv::UMat& frame, cv::UMat& gray, cv::UMat& gray_previous, cv::UMat& hsv);
+    float detectMotion(cv::UMat& frame, cv::UMat& gray, cv::UMat& gray_previous, cv::UMat& hsv);
 };
 
 #endif //MOTION_DETECTOR_H

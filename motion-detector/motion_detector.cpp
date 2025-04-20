@@ -35,8 +35,10 @@ void MotionDetector::loadConfig(const std::string &configFile) {
     mask_y_max = config["right_margin"].as<int>();
     res_ratio = config["res_ratio"].as<double>();
     threshold = config["threshold"].as<double>();
-    angle_min = config["angle_min"].as<int>();
-    angle_max = config["angle_max"].as<int>();
+    angle_up_min = config["angle_up_min"].as<int>();
+    angle_up_max = config["angle_up_max"].as<int>();
+    angle_down_min = config["angle_down_min"].as<int>();
+    angle_down_max = config["angle_down_max"].as<int>();
     binary_threshold = config["binary_threshold"].as<int>();
     threshold_count = config["threshold_count"].as<int>();
     show_cropped = config["show_cropped"].as<bool>();
@@ -103,7 +105,7 @@ int MotionDetector::calculateMaxMeanColumn(const std::vector<std::vector<int>>& 
     return std::distance(column_means.begin(), std::max_element(column_means.begin(), column_means.end()));
 }
 
-void MotionDetector::detectMotion(cv::UMat& frame, cv::UMat& gray, cv::UMat& gray_previous, cv::UMat& hsv) {
+float MotionDetector::detectMotion(cv::UMat& frame, cv::UMat& gray, cv::UMat& gray_previous, cv::UMat& hsv) {
     cv::UMat flow;
     cv::calcOpticalFlowFarneback(gray_previous, gray, flow, pyr_scale, levels,
         winsize, iterations, poly_n, poly_sigma, cv::OPTFLOW_LK_GET_MIN_EIGENVALS);
@@ -127,7 +129,9 @@ void MotionDetector::detectMotion(cv::UMat& frame, cv::UMat& gray, cv::UMat& gra
     }
 
     float move_mode = calculateMode(move_sense);
-    bool is_moving_up = (move_mode >= angle_min && move_mode <= angle_max);
+    bool is_moving_up =
+        (move_mode >= angle_up_min && move_mode <= angle_up_max ||
+        move_mode >= angle_down_min && move_mode <= angle_down_max);
 
     if (debug) {
         std::cout << move_mode << std::endl;
@@ -139,7 +143,8 @@ void MotionDetector::detectMotion(cv::UMat& frame, cv::UMat& gray, cv::UMat& gra
         directions_map[directions_map.size() - 1][2] = 0;
         directions_map[directions_map.size() - 1][3] = 0;
     }
-    else if (move_mode < angle_min || angle_max < move_mode) {
+    else if (move_mode < angle_up_min || angle_up_max < move_mode ||
+        move_mode < angle_down_min || angle_down_max < move_mode) {
         directions_map[directions_map.size() - 1][0] = 0;
         directions_map[directions_map.size() - 1][1] = 1;
         directions_map[directions_map.size() - 1][2] = 0;
@@ -197,6 +202,8 @@ void MotionDetector::detectMotion(cv::UMat& frame, cv::UMat& gray, cv::UMat& gra
     } else {
         std::cerr << "Error: hsv_channels does not have 3 elements!" << std::endl;
     }
+
+    return move_mode;
 }
 
 void MotionDetector::processFrame(cv::UMat& frame, cv::UMat& orig_frame, cv::UMat& gray_previous) {
@@ -211,7 +218,7 @@ void MotionDetector::processFrame(cv::UMat& frame, cv::UMat& orig_frame, cv::UMa
 
     cv::UMat hsv(frame.size(), CV_8UC3, cv::Scalar(0, 255, 0));
 
-    detectMotion(frame, gray, gray_previous, hsv);
+    float move_mode = detectMotion(frame, gray, gray_previous, hsv);
 
     int loc = calculateMaxMeanColumn(directions_map);
 
@@ -236,6 +243,10 @@ void MotionDetector::processFrame(cv::UMat& frame, cv::UMat& orig_frame, cv::UMa
     if (show_cropped) {
         text_thinkness = 2;
     }
+
+    cv::putText(orig_frame, "Angle: " + std::to_string(static_cast<int>(move_mode)),
+            cv::Point(30, 150), cv::FONT_HERSHEY_COMPLEX,
+            frame.cols / 500.0, cv::Scalar(0, 0, 255), 6);
 
     cv::putText(frame, text, cv::Point(30, 90), cv::FONT_HERSHEY_COMPLEX,
     frame.cols / 500.0, cv::Scalar(0, 0, 255), text_thinkness);

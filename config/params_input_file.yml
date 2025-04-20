@@ -9,11 +9,13 @@
   right_margin: 700,      # MASK_Y_MAX
 
   # Parameters to fine tune optical flow algorithm
-  angle_min: 215,         # Movement between these two angles should be detected
-  angle_max: 315,         # Movement between these two angles should be detected
+  angle_up_min: 215,         # Movement between these two angles should be detected while walking upwards
+  angle_up_max: 315,         # Movement between these two angles should be detected while walking upwards
+  angle_down_min: 60,         # Movement between these two angles should be detected while walking downwards
+  angle_down_max: 120,         # Movement between these two angles should be detected while walking downwards
   pyr_scale: 0.5,         # Image scale (<1) to build pyramids for each image
   levels: 1,              # Number of pyramid layers
-  winsize: 5,            # Averaging window size
+  winsize: 15,            # Averaging window size
   iterations: 1,          # Number of iterations the algorithm does at each pyramid level
   poly_n: 5,              # Size of the pixel neighborhood used to find polynomial expansion in each pixel
   poly_sigma: 1.1,        # Standard deviation of the Gaussian that is used to smooth derivatives used as a basis for the polynomial expansion
