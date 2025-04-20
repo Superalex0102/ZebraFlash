@@ -2,7 +2,7 @@
 #define MOTION_DETECTOR_H
 
 #include <opencv2/opencv.hpp>
-#include  <yaml-cpp/yaml.h>
+#include <yaml-cpp/yaml.h>
 #include <string>
 #include <vector>
 
@@ -33,6 +33,7 @@ private:
     int poly_n;
     double poly_sigma;
     bool debug;
+    bool use_gpu;
 
     const std::string WINDOW_NAME = "window";
 

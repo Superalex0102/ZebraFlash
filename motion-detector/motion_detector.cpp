@@ -1,9 +1,24 @@
 #include <iostream>
+#include <opencv2/core/ocl.hpp>
 
 #include "motion_detector.h"
+#include "../benchmark/benchmark.h"
 
 MotionDetector::MotionDetector(const std::string &configFile) {
     loadConfig(configFile);
+
+    if (cv::ocl::haveOpenCL() && use_gpu) {
+        cv::ocl::setUseOpenCL(true);
+        if (cv::ocl::useOpenCL()) {
+            std::cout << "Using GPU acceleration via OpenCL" << std::endl;
+        } else {
+            std::cout << "OpenCL is available, but not in use." << std::endl;
+        }
+    } else {
+        cv::ocl::setUseOpenCL(false);
+        std::cout << "GPU acceleration disabled (by confg or unavailable)." << std::endl;
+    }
+
     directions_map.resize(size, std::vector<int>(4, 0));
     backSub = cv::createBackgroundSubtractorMOG2(500, 16, true);
 }
@@ -32,6 +47,7 @@ void MotionDetector::loadConfig(const std::string &configFile) {
     poly_n = config["poly_n"].as<int>();
     poly_sigma = config["poly_sigma"].as<double>();
     debug = config["debug"].as<bool>();
+    use_gpu = config["use_gpu"].as<bool>();
 }
 
 float MotionDetector::calculateMode(const std::vector<float>& values) {
@@ -113,7 +129,9 @@ void MotionDetector::detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_p
     float move_mode = calculateMode(move_sense);
     bool is_moving_up = (move_mode >= angle_min && move_mode <= angle_max);
 
-    std::cout << move_mode << std::endl;
+    if (debug) {
+        std::cout << move_mode << std::endl;
+    }
 
     if (is_moving_up) {
         directions_map[directions_map.size() - 1][0] = 3.5f;
@@ -237,6 +255,10 @@ void MotionDetector::run() {
         return;
     }
 
+    Benchmark timer;
+    std::vector<BenchmarkResult> results;
+    int frame_index = 0;
+
     int h = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_HEIGHT));
     int w = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_WIDTH));
 
@@ -268,7 +290,16 @@ void MotionDetector::run() {
         }
 
         orig_frame = frame.clone();
+
+        timer.start();
         processFrame(frame, orig_frame, gray_previous);
+        double elapsed = timer.stop();
+
+        results.push_back({
+            frame_index++,
+            use_gpu,
+            elapsed
+        });
 
         if (show_cropped) {
             cv::imshow(WINDOW_NAME, frame);
@@ -283,6 +314,8 @@ void MotionDetector::run() {
             break;
         }
     }
+
+    saveBenchmarkResults(use_gpu, results);
 
     cap.release();
     cv::destroyAllWindows();

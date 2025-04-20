@@ -1,7 +1,7 @@
 #include <opencv2/opencv.hpp>
 #include <yaml-cpp/yaml.h>
 
-#include "motion_detector.h"
+#include "motion-detector/motion_detector.h"
 
 const std::string INPUT_FILE = "../config/params_input_file.yml";
 

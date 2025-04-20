@@ -22,8 +22,10 @@ find_package(OpenCV REQUIRED)
 include_directories( ${OpenCV_INCLUDE_DIRS} )
 
 add_executable(ZebraFlash main.cpp
-        motion_detector.h
-        motion_detector.cpp)
+        motion-detector/motion_detector.h
+        motion-detector/motion_detector.cpp
+        benchmark/benchmark.h
+        benchmark/benchmark.cpp)
 
 target_link_libraries(ZebraFlash PRIVATE yaml-cpp ${OpenCV_LIBS})
 
