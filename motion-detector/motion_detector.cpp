@@ -10,6 +10,8 @@
 MotionDetector::MotionDetector(const std::string &configFile) {
     loadConfig(configFile);
 
+    hog.setSVMDetector(cv::HOGDescriptor::getDefaultPeopleDetector());
+
     if (cv::ocl::haveOpenCL() && use_gpu) {
         cv::ocl::setUseOpenCL(true);
         if (cv::ocl::useOpenCL()) {
@@ -53,6 +55,9 @@ void MotionDetector::loadConfig(const std::string &configFile) {
     poly_sigma = config["poly_sigma"].as<double>();
     debug = config["debug"].as<bool>();
     use_gpu = config["use_gpu"].as<bool>();
+    use_roi_processing = config["use_roi_processing"].as<bool>();
+    roi_padding_factor = config["roi_padding_factor"].as<double>();
+    min_persons_for_roi = config["min_persons_for_roi"].as<int>();
 }
 
 float MotionDetector::calculateMode(const std::vector<float>& values) {
@@ -108,11 +113,76 @@ int MotionDetector::calculateMaxMeanColumn(const std::vector<std::vector<int>>& 
     return std::distance(column_means.begin(), std::max_element(column_means.begin(), column_means.end()));
 }
 
-float MotionDetector::detectMotion(cv::UMat& frame, cv::UMat& gray, cv::UMat& gray_previous, cv::UMat& hsv) {
-    cv::UMat flow;
+void MotionDetector::detectPersonROIs(const cv::UMat& frame) {
+    person_rois.clear();
 
-    cv::calcOpticalFlowFarneback(gray_previous, gray, flow, pyr_scale, levels,
-        winsize, iterations, poly_n, poly_sigma, 0);
+    cv::Mat frame_mat = frame.getMat(cv::ACCESS_READ);
+
+    cv::Mat detection_frame;
+    double detection_scale = 0.5;
+    cv::resize(frame_mat, detection_frame, cv::Size(), detection_scale, detection_scale);
+
+    std::vector<cv::Rect> people;
+    std::vector<double> weights;
+    hog.detectMultiScale(detection_frame, people, weights, 0, cv::Size(8, 8),
+        cv::Size(32, 32), 1.05, 2.0);
+
+    for (auto& rect : people) {
+        rect.x = static_cast<int>(rect.x / detection_scale);
+        rect.y = static_cast<int>(rect.y / detection_scale);
+        rect.width = static_cast<int>(rect.width / detection_scale);
+        rect.height = static_cast<int>(rect.height / detection_scale);
+
+        int padding_x = static_cast<int>(rect.width * (roi_padding_factor - 1.0) / 2);
+        int padding_y = static_cast<int>(rect.height * (roi_padding_factor - 1.0) / 2);
+
+        rect.x = std::max(0, rect.x - padding_x);
+        rect.y = std::max(0, rect.y - padding_y);
+        rect.width = std::min(frame.cols - rect.x, rect.width + 2 * padding_x);
+        rect.height = std::min(frame.rows - rect.y, rect.height + 2 * padding_y);
+
+        person_rois.push_back(rect);
+    }
+
+    if (person_rois.size() < min_persons_for_roi) {
+        person_rois.clear();
+        person_rois.push_back(cv::Rect(0, 0, frame.cols, frame.rows));
+    }
+
+    if (debug) {
+        std::cout << "Detected " << people.size() << " people, using "
+                  << person_rois.size() << " ROIs for processing" << std::endl;
+    }
+}
+
+float MotionDetector::detectMotion(cv::UMat& frame, cv::UMat& gray, cv::UMat& gray_previous, cv::UMat& hsv) {
+    bool use_rois = use_roi_processing && person_rois.size() >= min_persons_for_roi;
+
+    cv::UMat flow(gray.size(), CV_32FC2, cv::Scalar(0, 0));
+    cv::UMat flow_roi, gray_roi, gray_previous_roi;
+
+    if (use_rois) {
+        for (const auto& roi : person_rois) {
+            cv::Rect safe_roi = roi & cv::Rect(0, 0, gray.cols, gray.rows);
+            if (safe_roi.width <= 0 || safe_roi.height <= 0) continue;
+
+            gray_roi = gray(safe_roi);
+            gray_previous_roi = gray_previous(safe_roi);
+
+            cv::UMat flow_roi_result;
+            cv::calcOpticalFlowFarneback(
+                gray_previous_roi, gray_roi, flow_roi_result,
+                pyr_scale, levels, winsize, iterations, poly_n, poly_sigma, 0
+            );
+
+            flow_roi_result.copyTo(flow(safe_roi));
+        }
+    } else {
+        cv::calcOpticalFlowFarneback(
+            gray_previous, gray, flow,
+            pyr_scale, levels, winsize, iterations, poly_n, poly_sigma, 0
+        );
+    }
 
     std::vector<cv::UMat> flow_channels(2);
     cv::split(flow, flow_channels);
@@ -222,6 +292,17 @@ float MotionDetector::detectMotion(cv::UMat& frame, cv::UMat& gray, cv::UMat& gr
 void MotionDetector::processFrame(cv::UMat& frame, cv::UMat& orig_frame, cv::UMat& gray_previous) {
     frame = frame(cv::Range(mask_x_min, mask_x_max), cv::Range(mask_y_min, mask_y_max));
 
+    detectPersonROIs(frame);
+
+    if (debug) {
+        for (const auto& roi : person_rois) {
+            cv::rectangle(frame, roi, cv::Scalar(0, 0, 255), 2);
+            cv::rectangle(orig_frame, cv::Point(roi.x + mask_y_min, roi.y + mask_x_min),
+                cv::Point(roi.x + roi.width + mask_y_min, roi.y + roi.height + mask_x_min),
+                cv::Scalar(0, 0, 255), 2);
+        }
+    }
+
     cv::UMat frame_resized;
     cv::Size res(static_cast<int>(frame.cols * res_ratio), static_cast<int>(frame.rows * res_ratio));
     cv::resize(frame, frame_resized, res, 0, 0, cv::INTER_CUBIC);
@@ -260,6 +341,10 @@ void MotionDetector::processFrame(cv::UMat& frame, cv::UMat& orig_frame, cv::UMa
     cv::putText(orig_frame, "Angle: " + std::to_string(static_cast<int>(move_mode)),
             cv::Point(30, 150), cv::FONT_HERSHEY_COMPLEX,
             frame.cols / 500.0, cv::Scalar(0, 0, 255), 6);
+
+    cv::putText(orig_frame, "People: " + std::to_string(person_rois.size()),
+        cv::Point(30, 220), cv::FONT_HERSHEY_COMPLEX,
+        frame.cols / 500.0, cv::Scalar(0, 255, 0), 6);
 
     cv::putText(frame, text, cv::Point(30, 90), cv::FONT_HERSHEY_COMPLEX,
     frame.cols / 500.0, cv::Scalar(0, 0, 255), text_thinkness);

@@ -36,11 +36,16 @@ private:
     double poly_sigma;
     bool debug;
     bool use_gpu;
+    bool use_roi_processing;
+    double roi_padding_factor;
+    int min_persons_for_roi;
 
     const std::string WINDOW_NAME = "window";
 
     std::vector<std::vector<int>> directions_map;
     cv::Ptr<cv::BackgroundSubtractor> backSub;
+    cv::HOGDescriptor hog;
+    std::vector<cv::Rect> person_rois;
 
     void loadConfig(const std::string& configFile);
     float calculateMode(const std::vector<float>& values);
@@ -48,6 +53,7 @@ private:
     int calculateMaxMeanColumn(const std::vector<std::vector<int>>& map);
     void processFrame(cv::UMat& frame, cv::UMat& orig_frame, cv::UMat& gray_previous);
     float detectMotion(cv::UMat& frame, cv::UMat& gray, cv::UMat& gray_previous, cv::UMat& hsv);
+    void detectPersonROIs(const cv::UMat& frame);
 };
 
 #endif //MOTION_DETECTOR_H
