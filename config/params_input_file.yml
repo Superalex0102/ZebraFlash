@@ -11,8 +11,8 @@
   # Parameters to fine tune optical flow algorithm
   angle_up_min: 215,         # Movement between these two angles should be detected while walking upwards
   angle_up_max: 315,         # Movement between these two angles should be detected while walking upwards
-  angle_down_min: 60,         # Movement between these two angles should be detected while walking downwards
-  angle_down_max: 120,         # Movement between these two angles should be detected while walking downwards
+  angle_down_min: 40,         # Movement between these two angles should be detected while walking downwards
+  angle_down_max: 150,         # Movement between these two angles should be detected while walking downwards
   pyr_scale: 0.5,         # Image scale (<1) to build pyramids for each image
   levels: 1,              # Number of pyramid layers
   winsize: 15,            # Averaging window size
@@ -27,6 +27,6 @@
   threshold_count: 0,     # minimum number of different pixels from the background model
   show_cropped: false,     # show the cropped image instead of the original frame
   seek: 25000,            # video starting position in milliseconds
-  debug: true,            # debug messages and screens displayed
+  debug: false,            # debug messages and screens displayed
   use_gpu: true,            # GPU acceleration is being used
 }

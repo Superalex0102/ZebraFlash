@@ -2,6 +2,9 @@
 #include <opencv2/core/ocl.hpp>
 
 #include "motion_detector.h"
+
+#include <thread>
+
 #include "../benchmark/benchmark.h"
 
 MotionDetector::MotionDetector(const std::string &configFile) {
@@ -113,19 +116,28 @@ float MotionDetector::detectMotion(cv::UMat& frame, cv::UMat& gray, cv::UMat& gr
     std::vector<cv::UMat> flow_channels(2);
     cv::split(flow, flow_channels);
 
-    cv::Mat mag, ang;
+    cv::UMat mag, ang;
     cv::cartToPolar(flow_channels[0], flow_channels[1], mag, ang, true);
 
-    cv::Mat ang_180 = ang / 2;
-    cv::Mat mask = mag > threshold;
+    cv::Mat ang_mat = ang.getMat(cv::ACCESS_READ);
+    cv::Mat mag_mat = mag.getMat(cv::ACCESS_READ);
+
+    cv::Mat ang_180 = ang_mat / 2;
+    cv::Mat mask = mag_mat > threshold;
+
+    std::vector<cv::Point> non_zero_points;
+    cv::findNonZero(mask, non_zero_points);
 
     std::vector<float> move_sense;
-    for (int i = 0; i < ang.rows; ++i) {
+    /*for (int i = 0; i < ang.rows; ++i) {
         for (int j = 0; j < ang.cols; ++j) {
             if (mask.at<uchar>(i, j)) {
-                move_sense.push_back(ang.at<float>(i, j));
+                move_sense.push_back(ang_180.at<float>(i, j));
             }
         }
+    }*/
+    for (const auto& pt : non_zero_points) {
+        move_sense.push_back(ang_mat.at<float>(pt));
     }
 
     float move_mode = calculateMode(move_sense);
@@ -331,5 +343,3 @@ void MotionDetector::run() {
     cap.release();
     cv::destroyAllWindows();
 }
-
-//cv::setNumThreads(4);
