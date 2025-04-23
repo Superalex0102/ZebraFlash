@@ -110,8 +110,9 @@ int MotionDetector::calculateMaxMeanColumn(const std::vector<std::vector<int>>& 
 
 float MotionDetector::detectMotion(cv::UMat& frame, cv::UMat& gray, cv::UMat& gray_previous, cv::UMat& hsv) {
     cv::UMat flow;
+
     cv::calcOpticalFlowFarneback(gray_previous, gray, flow, pyr_scale, levels,
-        winsize, iterations, poly_n, poly_sigma, cv::OPTFLOW_LK_GET_MIN_EIGENVALS);
+        winsize, iterations, poly_n, poly_sigma, 0);
 
     std::vector<cv::UMat> flow_channels(2);
     cv::split(flow, flow_channels);
