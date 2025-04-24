@@ -319,6 +319,9 @@ void MotionDetector::run() {
         processFrame(frame, orig_frame, gray_previous);
         double elapsed = timer.stop();
 
+        cv::putText(orig_frame, "MS: " + std::to_string(elapsed), cv::Point(30, 200), cv::FONT_HERSHEY_COMPLEX,
+                    frame.cols / 500.0, cv::Scalar(0, 255, 0), 3);
+
         results.push_back({
             frame_index++,
             use_gpu,
