@@ -61,9 +61,10 @@ float MotionDetector::calculateMode(const std::vector<float>& values) {
         return std::numeric_limits<float>::quiet_NaN();
     }
 
-    std::map<float, int> frequency_map;
+    std::unordered_map<float, int> frequency_map;
     for (const float& value : values) {
-        frequency_map[value]++;
+        int binned = static_cast<int>(std::round(value));
+        frequency_map[binned]++;
     }
 
     float mode = values[0];
