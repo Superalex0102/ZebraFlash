@@ -1,7 +1,7 @@
 {
   # Main parameters
   video_src: "../input/out2.mp4v",  # Path of the input file.
-  res_ratio: 0.14,        # Scale resolution for computing optical flow
+  res_ratio: 0.5,        # Scale resolution for computing optical flow
   # The image processing area (area of interest) can be defined with the following margins
   upper_margin: 220,      # MASK_X_MIN
   bottom_margin: 150,     # MASK_X_MAX
@@ -26,7 +26,7 @@
   binary_threshold: 150,  # Only take different areas that are different enough (0-255)
   threshold_count: 0,     # minimum number of different pixels from the background model
   show_cropped: false,     # show the cropped image instead of the original frame
-  seek: 25000,            # video starting position in milliseconds
+  seek: 50000,            # video starting position in milliseconds
   debug: false,            # debug messages and screens displayed
   use_gpu: true,            # GPU acceleration is being used
 }

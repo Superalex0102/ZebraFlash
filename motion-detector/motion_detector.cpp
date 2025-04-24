@@ -61,13 +61,16 @@ float MotionDetector::calculateMode(const std::vector<float>& values) {
         return std::numeric_limits<float>::quiet_NaN();
     }
 
-    std::map<float, int> frequency_map;
+    std::unordered_map<float, int> frequency_map;
+
     for (const float& value : values) {
-        frequency_map[value]++;
+        int binned = static_cast<int>(std::round(value));
+        frequency_map[binned]++;
     }
 
     float mode = values[0];
     int max_count = 0;
+
     for (const auto& pair : frequency_map) {
         if (pair.second > max_count) {
             mode = pair.first;
@@ -108,11 +111,26 @@ int MotionDetector::calculateMaxMeanColumn(const std::vector<std::vector<int>>& 
     return std::distance(column_means.begin(), std::max_element(column_means.begin(), column_means.end()));
 }
 
+void MotionDetector::renderText(const std::vector<TextItem>& text_items, cv::UMat& frame) {
+    std::lock_guard<std::mutex> lock(text_mutex);
+
+    for (const auto& text_item : text_items) {
+        cv::putText(frame, text_item.text, text_item.position, text_item.fontFace,
+                    text_item.fontScale, text_item.color, text_item.thickness);
+    }
+}
+
 float MotionDetector::detectMotion(cv::UMat& frame, cv::UMat& gray, cv::UMat& gray_previous, cv::UMat& hsv) {
+    int64 start_time = cv::getTickCount();
+
     cv::UMat flow;
 
     cv::calcOpticalFlowFarneback(gray_previous, gray, flow, pyr_scale, levels,
         winsize, iterations, poly_n, poly_sigma, 0);
+
+    int64 end_time = cv::getTickCount();
+    double time_taken_ms = (end_time - start_time) * 1000.0 / cv::getTickFrequency();
+    std::cout << "calcOpticalFlowFarneback took " << time_taken_ms << " ms" << std::endl;
 
     std::vector<cv::UMat> flow_channels(2);
     cv::split(flow, flow_channels);
@@ -142,6 +160,7 @@ float MotionDetector::detectMotion(cv::UMat& frame, cv::UMat& gray, cv::UMat& gr
     }
 
     float move_mode = calculateMode(move_sense);
+
     bool is_moving_up =
         (move_mode >= angle_up_min && move_mode <= angle_up_max ||
         move_mode >= angle_down_min && move_mode <= angle_down_max);
@@ -220,6 +239,7 @@ float MotionDetector::detectMotion(cv::UMat& frame, cv::UMat& gray, cv::UMat& gr
 }
 
 void MotionDetector::processFrame(cv::UMat& frame, cv::UMat& orig_frame, cv::UMat& gray_previous) {
+
     frame = frame(cv::Range(mask_x_min, mask_x_max), cv::Range(mask_y_min, mask_y_max));
 
     cv::UMat frame_resized;
@@ -257,15 +277,34 @@ void MotionDetector::processFrame(cv::UMat& frame, cv::UMat& orig_frame, cv::UMa
         text_thinkness = 2;
     }
 
-    cv::putText(orig_frame, "Angle: " + std::to_string(static_cast<int>(move_mode)),
-            cv::Point(30, 150), cv::FONT_HERSHEY_COMPLEX,
-            frame.cols / 500.0, cv::Scalar(0, 0, 255), 6);
+    // cv::putText(orig_frame, "Angle: " + std::to_string(static_cast<int>(move_mode)),
+    //         cv::Point(30, 150), cv::FONT_HERSHEY_COMPLEX,
+    //         frame.cols / 500.0, cv::Scalar(0, 0, 255), 6);
 
-    cv::putText(frame, text, cv::Point(30, 90), cv::FONT_HERSHEY_COMPLEX,
-    frame.cols / 500.0, cv::Scalar(0, 0, 255), text_thinkness);
+    std::vector<TextItem> text_items = {
+        TextItem {
+            "Angle: " + std::to_string(static_cast<int>(move_mode)),
+            cv::Point(30, 150),
+            cv::FONT_HERSHEY_COMPLEX,
+            frame.cols / 500.0,
+            cv::Scalar(0, 0, 255),
+            6,
+        },
+        TextItem {
+            text,
+            cv::Point(30, 90),
+            cv::FONT_HERSHEY_COMPLEX,
+            orig_frame.cols / 500.0,
+            cv::Scalar(0, 0, 255),
+            text_thinkness,
+        },
+    };
 
-    cv::putText(orig_frame, text, cv::Point(30, 90), cv::FONT_HERSHEY_COMPLEX,
-        orig_frame.cols / 500.0, cv::Scalar(0, 0, 255), text_thinkness);
+    std::thread text_thread(&MotionDetector::renderText, this, std::ref(text_items), std::ref(orig_frame));
+    text_thread.join();
+
+    // cv::putText(orig_frame, text, cv::Point(30, 90), cv::FONT_HERSHEY_COMPLEX,
+    // orig_frame.cols / 500.0, cv::Scalar(0, 0, 255), text_thinkness);
 
     gray_previous = gray;
 }
@@ -318,6 +357,9 @@ void MotionDetector::run() {
         timer.start();
         processFrame(frame, orig_frame, gray_previous);
         double elapsed = timer.stop();
+
+        cv::putText(orig_frame, "MS: " + std::to_string(elapsed), cv::Point(30, 200), cv::FONT_HERSHEY_COMPLEX,
+                    frame.cols / 500.0, cv::Scalar(0, 255, 0), 3);
 
         results.push_back({
             frame_index++,

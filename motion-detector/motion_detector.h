@@ -11,6 +11,15 @@ public:
     MotionDetector(const std::string& configFile);
     void run();
 
+    struct TextItem {
+        std::string text;
+        cv::Point position;
+        int fontFace;
+        double fontScale;
+        cv::Scalar color;
+        int thickness;
+    };
+
 private:
     std::string video_src;
     int size;
@@ -42,12 +51,15 @@ private:
     std::vector<std::vector<int>> directions_map;
     cv::Ptr<cv::BackgroundSubtractor> backSub;
 
+    std::mutex text_mutex;
+
     void loadConfig(const std::string& configFile);
     float calculateMode(const std::vector<float>& values);
     void roll(std::vector<std::vector<int>>& map);
     int calculateMaxMeanColumn(const std::vector<std::vector<int>>& map);
     void processFrame(cv::UMat& frame, cv::UMat& orig_frame, cv::UMat& gray_previous);
     float detectMotion(cv::UMat& frame, cv::UMat& gray, cv::UMat& gray_previous, cv::UMat& hsv);
+    void renderText(const std::vector<TextItem>& text_items, cv::UMat& frame);
 };
 
 #endif //MOTION_DETECTOR_H
