@@ -9,6 +9,7 @@
 
 MotionDetector::MotionDetector(const std::string &configFile) {
     loadConfig(configFile);
+    cv::setNumThreads(16);
 
     if (cv::ocl::haveOpenCL() && use_gpu) {
         cv::ocl::setUseOpenCL(true);
@@ -113,7 +114,6 @@ float MotionDetector::detectMotion(cv::UMat& frame, cv::UMat& gray, cv::UMat& gr
 
     cv::UMat flow;
 
-    cv::setNumThreads(16);
     cv::calcOpticalFlowFarneback(gray_previous, gray, flow, pyr_scale, levels,
         winsize, iterations, poly_n, poly_sigma, 0);
 
