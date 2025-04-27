@@ -57,7 +57,6 @@ void MotionDetector::loadConfig(const std::string &configFile) {
 
 float MotionDetector::calculateMode(const std::vector<float>& values) {
     if (values.empty()) {
-        std::cerr << "Error: No data available to calculate mode." << std::endl;
         return std::numeric_limits<float>::quiet_NaN();
     }
 
@@ -110,8 +109,11 @@ int MotionDetector::calculateMaxMeanColumn(const std::vector<std::vector<int>>& 
 }
 
 float MotionDetector::detectMotion(cv::UMat& frame, cv::UMat& gray, cv::UMat& gray_previous, cv::UMat& hsv) {
+    int64 start_time = cv::getTickCount();
+
     cv::UMat flow;
 
+    cv::setNumThreads(16);
     cv::calcOpticalFlowFarneback(gray_previous, gray, flow, pyr_scale, levels,
         winsize, iterations, poly_n, poly_sigma, 0);
 
@@ -216,6 +218,10 @@ float MotionDetector::detectMotion(cv::UMat& frame, cv::UMat& gray, cv::UMat& gr
     } else {
         std::cerr << "Error: hsv_channels does not have 3 elements!" << std::endl;
     }
+
+    int64 end_time = cv::getTickCount();
+    double time_taken_ms = (end_time - start_time) * 1000.0 / cv::getTickFrequency();
+    std::cout << "calcOpticalFlowFarneback took " << time_taken_ms << " ms" << std::endl;
 
     return move_mode;
 }
