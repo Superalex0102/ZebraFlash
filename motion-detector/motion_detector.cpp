@@ -9,7 +9,7 @@
 
 MotionDetector::MotionDetector(const std::string &configFile) {
     loadConfig(configFile);
-    cv::setNumThreads(16);
+    //cv::setNumThreads(16);
 
     if (cv::ocl::haveOpenCL() && use_gpu) {
         cv::ocl::setUseOpenCL(true);
@@ -110,7 +110,6 @@ int MotionDetector::calculateMaxMeanColumn(const std::vector<std::vector<int>>& 
 }
 
 float MotionDetector::detectMotion(cv::UMat& frame, cv::UMat& gray, cv::UMat& gray_previous, cv::UMat& hsv) {
-    int64 start_time = cv::getTickCount();
 
     cv::UMat flow;
 
@@ -123,6 +122,9 @@ float MotionDetector::detectMotion(cv::UMat& frame, cv::UMat& gray, cv::UMat& gr
     cv::UMat mag, ang;
     cv::cartToPolar(flow_channels[0], flow_channels[1], mag, ang, true);
 
+    int64 start_time = cv::getTickCount();
+
+    //TODO: ang_mat takes around 10-15ms to process
     cv::Mat ang_mat = ang.getMat(cv::ACCESS_READ);
     cv::Mat mag_mat = mag.getMat(cv::ACCESS_READ);
 
@@ -143,6 +145,10 @@ float MotionDetector::detectMotion(cv::UMat& frame, cv::UMat& gray, cv::UMat& gr
     for (const auto& pt : non_zero_points) {
         move_sense.push_back(ang_mat.at<float>(pt));
     }
+
+    int64 end_time = cv::getTickCount();
+    double time_taken_ms = (end_time - start_time) * 1000.0 / cv::getTickFrequency();
+    std::cout << "calcOpticalFlowFarneback took " << time_taken_ms << " ms" << std::endl;
 
     float move_mode = calculateMode(move_sense);
     bool is_moving_up =
@@ -218,10 +224,6 @@ float MotionDetector::detectMotion(cv::UMat& frame, cv::UMat& gray, cv::UMat& gr
     } else {
         std::cerr << "Error: hsv_channels does not have 3 elements!" << std::endl;
     }
-
-    int64 end_time = cv::getTickCount();
-    double time_taken_ms = (end_time - start_time) * 1000.0 / cv::getTickFrequency();
-    std::cout << "calcOpticalFlowFarneback took " << time_taken_ms << " ms" << std::endl;
 
     return move_mode;
 }
