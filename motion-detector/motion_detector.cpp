@@ -13,7 +13,7 @@
 
 MotionDetector::MotionDetector(const std::string &configFile) {
     loadConfig(configFile);
-    //cv::setNumThreads(16);
+    // cv::setNumThreads(16);
 
     if (cv::ocl::haveOpenCL() && use_gpu) {
         cv::ocl::setUseOpenCL(true);
@@ -123,17 +123,17 @@ float MotionDetector::detectMotion(cv::UMat& frame, cv::UMat& gray, cv::UMat& gr
     std::vector<cv::UMat> flow_channels(2);
     cv::split(flow, flow_channels);
 
-    cv::UMat mag, ang;
+    cv::Mat mag, ang;
     cv::cartToPolar(flow_channels[0], flow_channels[1], mag, ang, true);
 
     int64 start_time = cv::getTickCount();
 
     //TODO: ang_mat takes around 10-15ms to process
-    cv::Mat ang_mat = ang.getMat(cv::ACCESS_READ);
-    cv::Mat mag_mat = mag.getMat(cv::ACCESS_READ);
+    // cv::Mat ang_mat = ang.getMat(cv::ACCESS_READ);
+    // cv::Mat mag_mat = mag.getMat(cv::ACCESS_READ);
 
-    cv::Mat ang_180 = ang_mat / 2;
-    cv::Mat mask = mag_mat > threshold;
+    cv::Mat ang_180 = ang / 2;
+    cv::Mat mask = mag > threshold;
 
     std::vector<cv::Point> non_zero_points;
     cv::findNonZero(mask, non_zero_points);
@@ -147,7 +147,7 @@ float MotionDetector::detectMotion(cv::UMat& frame, cv::UMat& gray, cv::UMat& gr
         }
     }*/
     for (const auto& pt : non_zero_points) {
-        move_sense.push_back(ang_mat.at<float>(pt));
+        move_sense.push_back(ang.at<float>(pt));
     }
 
     int64 end_time = cv::getTickCount();
