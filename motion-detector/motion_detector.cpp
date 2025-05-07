@@ -117,20 +117,20 @@ float MotionDetector::detectMotion(cv::UMat& frame, cv::UMat& gray, cv::UMat& gr
 
     cv::UMat flow;
 
+    int64 start_time = cv::getTickCount();
+
     cv::calcOpticalFlowFarneback(gray_previous, gray, flow, pyr_scale, levels,
         winsize, iterations, poly_n, poly_sigma, 0);
+
+    int64 end_time = cv::getTickCount();
+    double time_taken_ms = (end_time - start_time) * 1000.0 / cv::getTickFrequency();
+    std::cout << "calcOpticalFlowFarneback took " << time_taken_ms << " ms" << std::endl;
 
     std::vector<cv::UMat> flow_channels(2);
     cv::split(flow, flow_channels);
 
     cv::Mat mag, ang;
     cv::cartToPolar(flow_channels[0], flow_channels[1], mag, ang, true);
-
-    int64 start_time = cv::getTickCount();
-
-    //TODO: ang_mat takes around 10-15ms to process
-    // cv::Mat ang_mat = ang.getMat(cv::ACCESS_READ);
-    // cv::Mat mag_mat = mag.getMat(cv::ACCESS_READ);
 
     cv::Mat ang_180 = ang / 2;
     cv::Mat mask = mag > threshold;
@@ -149,10 +149,6 @@ float MotionDetector::detectMotion(cv::UMat& frame, cv::UMat& gray, cv::UMat& gr
     for (const auto& pt : non_zero_points) {
         move_sense.push_back(ang.at<float>(pt));
     }
-
-    int64 end_time = cv::getTickCount();
-    double time_taken_ms = (end_time - start_time) * 1000.0 / cv::getTickFrequency();
-    std::cout << "calcOpticalFlowFarneback took " << time_taken_ms << " ms" << std::endl;
 
     float move_mode = calculateMode(move_sense);
     bool is_moving_up =
