@@ -13,6 +13,7 @@
 
 MotionDetector::MotionDetector(const std::string &configFile) {
     loadConfig(configFile);
+    thread_pool = std::make_unique<ThreadPool>(std::thread::hardware_concurrency());
     // cv::setNumThreads(16);
 
     if (cv::ocl::haveOpenCL() && use_gpu) {
@@ -113,14 +114,44 @@ int MotionDetector::calculateMaxMeanColumn(const std::vector<std::vector<int>>& 
     return std::distance(column_means.begin(), std::max_element(column_means.begin(), column_means.end()));
 }
 
-float MotionDetector::detectMotion(cv::UMat& frame, cv::UMat& gray, cv::UMat& gray_previous, cv::UMat& hsv) {
-
-    cv::UMat flow;
-
+float MotionDetector::detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_previous, cv::UMat& hsv) {
     int64 start_time = cv::getTickCount();
 
-    cv::calcOpticalFlowFarneback(gray_previous, gray, flow, pyr_scale, levels,
-        winsize, iterations, poly_n, poly_sigma, 0);
+    cv::Mat flow(gray.size(), CV_32FC2);
+
+    int num_threads = std::thread::hardware_concurrency();
+    int cols_per_thread = gray.cols / num_threads;
+
+    std::vector<std::future<void>> futures;
+    std::vector<cv::Mat> flow_parts(num_threads);
+
+    for (int i = 0; i < num_threads; i++) {
+        int start_col = i * cols_per_thread;
+        int end_col = (i == num_threads - 1) ? gray.cols : (i + 1) * cols_per_thread;
+
+        cv::Range col_range(start_col, end_col);
+        cv::Mat gray_section = gray(cv::Range::all(), col_range);
+        cv::Mat prev_section = gray_previous(cv::Range::all(), col_range);
+
+        flow_parts[i] = cv::Mat(gray_section.rows, end_col - start_col, CV_32FC2);
+
+        futures.push_back(thread_pool->enqueue([=, &flow_parts]() {
+            cv::calcOpticalFlowFarneback(prev_section, gray_section, flow_parts[i],
+                pyr_scale, levels, winsize, iterations, poly_n, poly_sigma, 0);
+        }));
+    }
+
+    for (auto& future : futures) {
+        future.get();
+    }
+
+    for (int i = 0; i < num_threads; i++) {
+        int start_col = i * cols_per_thread;
+        int end_col = (i == num_threads - 1) ? gray.cols : (i + 1) * cols_per_thread;
+
+        cv::Range col_range(start_col, end_col);
+        flow_parts[i].copyTo(flow(cv::Range::all(), col_range));
+    }
 
     int64 end_time = cv::getTickCount();
     double time_taken_ms = (end_time - start_time) * 1000.0 / cv::getTickFrequency();
@@ -228,14 +259,14 @@ float MotionDetector::detectMotion(cv::UMat& frame, cv::UMat& gray, cv::UMat& gr
     return move_mode;
 }
 
-void MotionDetector::processFrame(cv::UMat& frame, cv::UMat& orig_frame, cv::UMat& gray_previous) {
+void MotionDetector::processFrame(cv::Mat& frame, cv::Mat& orig_frame, cv::Mat& gray_previous) {
     frame = frame(cv::Range(mask_x_min, mask_x_max), cv::Range(mask_y_min, mask_y_max));
 
     cv::UMat frame_resized;
     cv::Size res(static_cast<int>(frame.cols * res_ratio), static_cast<int>(frame.rows * res_ratio));
     cv::resize(frame, frame_resized, res, 0, 0, cv::INTER_CUBIC);
 
-    cv::UMat gray;
+    cv::Mat gray;
     cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
 
     cv::UMat hsv(frame.size(), CV_8UC3, cv::Scalar(0, 255, 0));
@@ -307,11 +338,11 @@ void MotionDetector::run() {
         return;
     }
 
-    cv::UMat gray_previous;
+    cv::Mat gray_previous;
     cv::cvtColor(frame_previous(cv::Range(mask_x_min, mask_x_max), cv::Range(mask_y_min, mask_y_max)),
                  gray_previous, cv::COLOR_BGR2GRAY);
 
-    cv::UMat frame, orig_frame;
+    cv::Mat frame, orig_frame;
     bool grabbed;
 
     while (true) {

@@ -25,7 +25,9 @@ add_executable(ZebraFlash main.cpp
         motion-detector/motion_detector.h
         motion-detector/motion_detector.cpp
         benchmark/benchmark.h
-        benchmark/benchmark.cpp)
+        benchmark/benchmark.cpp
+        thread-pool/thread_pool.h
+        thread-pool/thread_pool.cpp)
 
 target_link_libraries(ZebraFlash PRIVATE yaml-cpp ${OpenCV_LIBS})
 

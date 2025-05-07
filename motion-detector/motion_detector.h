@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 
+#include "../thread-pool/thread_pool.h"
+
 class MotionDetector {
 public:
     MotionDetector(const std::string& configFile);
@@ -42,12 +44,14 @@ private:
     std::vector<std::vector<int>> directions_map;
     cv::Ptr<cv::BackgroundSubtractor> backSub;
 
+    std::unique_ptr<ThreadPool> thread_pool;
+
     void loadConfig(const std::string& configFile);
     float calculateMode(const std::vector<float>& values);
     void roll(std::vector<std::vector<int>>& map);
     int calculateMaxMeanColumn(const std::vector<std::vector<int>>& map);
-    void processFrame(cv::UMat& frame, cv::UMat& orig_frame, cv::UMat& gray_previous);
-    float detectMotion(cv::UMat& frame, cv::UMat& gray, cv::UMat& gray_previous, cv::UMat& hsv);
+    void processFrame(cv::Mat& frame, cv::Mat& orig_frame, cv::Mat& gray_previous);
+    float detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_previous, cv::UMat& hsv);
 };
 
 #endif //MOTION_DETECTOR_H
