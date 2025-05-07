@@ -35,7 +35,6 @@ void saveResultToCSV(const std::string& filename, const std::vector<BenchmarkRes
     if (file.is_open()) {
         file << "Frame Index,Use GPU,Elapsed Time (ms)\n";
         for (const auto& r : results) {
-            //TODO: Implement a configurable option that lets users change the separator
             file << r.frame_index << ","
                  << (r.use_gpu ? "Yes" : "No") << ","
                  << std::fixed << std::setprecision(3) << r.process_time_ms << "\n";

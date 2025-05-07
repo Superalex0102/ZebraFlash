@@ -13,7 +13,11 @@
 
 MotionDetector::MotionDetector(const std::string &configFile) {
     loadConfig(configFile);
-    thread_pool = std::make_unique<ThreadPool>(std::thread::hardware_concurrency());
+
+    if (use_multi_thread) {
+        thread_pool = std::make_unique<ThreadPool>(thread_amount == -1 ? std::thread::hardware_concurrency() : thread_amount);
+    }
+
     // cv::setNumThreads(16);
 
     if (cv::ocl::haveOpenCL() && use_gpu) {
@@ -59,6 +63,8 @@ void MotionDetector::loadConfig(const std::string &configFile) {
     poly_sigma = config["poly_sigma"].as<double>();
     debug = config["debug"].as<bool>();
     use_gpu = config["use_gpu"].as<bool>();
+    use_multi_thread = config["use_multi_thread"].as<bool>();
+    thread_amount = config["thread_amount"].as<int>();
 }
 
 float MotionDetector::calculateMode(const std::vector<float>& values) {
@@ -119,38 +125,41 @@ float MotionDetector::detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_
 
     cv::Mat flow(gray.size(), CV_32FC2);
 
-    int num_threads = std::thread::hardware_concurrency();
-    int cols_per_thread = gray.cols / num_threads;
+    if (use_multi_thread) {
+        int cols_per_thread = gray.cols / thread_amount;
+        std::vector<std::future<void>> futures;
+        std::vector<cv::Mat> flow_parts(thread_amount);
 
-    std::vector<std::future<void>> futures;
-    std::vector<cv::Mat> flow_parts(num_threads);
+        for (int i = 0; i < thread_amount; i++) {
+            int start_col = i * cols_per_thread;
+            int end_col = (i == thread_amount - 1) ? gray.cols : (i + 1) * cols_per_thread;
 
-    for (int i = 0; i < num_threads; i++) {
-        int start_col = i * cols_per_thread;
-        int end_col = (i == num_threads - 1) ? gray.cols : (i + 1) * cols_per_thread;
+            cv::Range col_range(start_col, end_col);
+            cv::Mat gray_section = gray(cv::Range::all(), col_range);
+            cv::Mat prev_section = gray_previous(cv::Range::all(), col_range);
 
-        cv::Range col_range(start_col, end_col);
-        cv::Mat gray_section = gray(cv::Range::all(), col_range);
-        cv::Mat prev_section = gray_previous(cv::Range::all(), col_range);
+            flow_parts[i] = cv::Mat(gray_section.rows, end_col - start_col, CV_32FC2);
 
-        flow_parts[i] = cv::Mat(gray_section.rows, end_col - start_col, CV_32FC2);
+            futures.push_back(thread_pool->enqueue([=, &flow_parts]() {
+                cv::calcOpticalFlowFarneback(prev_section, gray_section, flow_parts[i],
+                    pyr_scale, levels, winsize, iterations, poly_n, poly_sigma, 0);
+            }));
+        }
 
-        futures.push_back(thread_pool->enqueue([=, &flow_parts]() {
-            cv::calcOpticalFlowFarneback(prev_section, gray_section, flow_parts[i],
-                pyr_scale, levels, winsize, iterations, poly_n, poly_sigma, 0);
-        }));
-    }
+        for (auto& future : futures) {
+            future.get();
+        }
 
-    for (auto& future : futures) {
-        future.get();
-    }
+        for (int i = 0; i < thread_amount; i++) {
+            int start_col = i * cols_per_thread;
+            int end_col = (i == thread_amount - 1) ? gray.cols : (i + 1) * cols_per_thread;
 
-    for (int i = 0; i < num_threads; i++) {
-        int start_col = i * cols_per_thread;
-        int end_col = (i == num_threads - 1) ? gray.cols : (i + 1) * cols_per_thread;
-
-        cv::Range col_range(start_col, end_col);
-        flow_parts[i].copyTo(flow(cv::Range::all(), col_range));
+            cv::Range col_range(start_col, end_col);
+            flow_parts[i].copyTo(flow(cv::Range::all(), col_range));
+        }
+    } else {
+        cv::calcOpticalFlowFarneback(gray_previous, gray, flow, pyr_scale, levels,
+            winsize, iterations, poly_n, poly_sigma, 0);
     }
 
     int64 end_time = cv::getTickCount();
@@ -170,13 +179,6 @@ float MotionDetector::detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_
     cv::findNonZero(mask, non_zero_points);
 
     std::vector<float> move_sense;
-    /*for (int i = 0; i < ang.rows; ++i) {
-        for (int j = 0; j < ang.cols; ++j) {
-            if (mask.at<uchar>(i, j)) {
-                move_sense.push_back(ang_180.at<float>(i, j));
-            }
-        }
-    }*/
     for (const auto& pt : non_zero_points) {
         move_sense.push_back(ang.at<float>(pt));
     }

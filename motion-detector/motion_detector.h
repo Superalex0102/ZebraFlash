@@ -38,6 +38,8 @@ private:
     double poly_sigma;
     bool debug;
     bool use_gpu;
+    bool use_multi_thread;
+    int thread_amount;
 
     const std::string WINDOW_NAME = "window";
 
