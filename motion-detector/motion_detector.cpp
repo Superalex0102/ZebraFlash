@@ -15,7 +15,8 @@ MotionDetector::MotionDetector(const std::string &configFile) {
     loadConfig(configFile);
 
     if (use_multi_thread) {
-        thread_pool = std::make_unique<ThreadPool>(thread_amount == -1 ? std::thread::hardware_concurrency() : thread_amount);
+        thread_amount = thread_amount == -1 ? std::thread::hardware_concurrency() : thread_amount;
+        thread_pool = std::make_unique<ThreadPool>(thread_amount);
     }
 
     // cv::setNumThreads(16);
