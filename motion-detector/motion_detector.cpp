@@ -55,7 +55,6 @@ void MotionDetector::loadConfig(const std::string &configFile) {
     angle_down_max = config["angle_down_max"].as<int>();
     binary_threshold = config["binary_threshold"].as<int>();
     threshold_count = config["threshold_count"].as<int>();
-    show_cropped = config["show_cropped"].as<bool>();
     pyr_scale = config["pyr_scale"].as<double>();
     levels = config["levels"].as<int>();
     winsize = config["winsize"].as<int>();
@@ -304,9 +303,6 @@ void MotionDetector::processFrame(cv::Mat& frame, cv::Mat& orig_frame, cv::Mat& 
     cv::cvtColor(hsv, rgb, cv::COLOR_HSV2BGR);
 
     int text_thinkness = 6;
-    if (show_cropped) {
-        text_thinkness = 2;
-    }
 
     cv::putText(orig_frame, "Angle: " + std::to_string(static_cast<int>(move_mode)),
             cv::Point(30, 150), cv::FONT_HERSHEY_COMPLEX,
@@ -379,14 +375,9 @@ void MotionDetector::run() {
             elapsed
         });
 
-        if (show_cropped) {
-            cv::imshow(WINDOW_NAME, frame);
-        }
-        else {
-            cv::rectangle(orig_frame, cv::Point(mask_y_min, mask_x_min), cv::Point(mask_y_max, mask_x_max),
-                cv::Scalar(0, 255, 0), 3);
-            cv::imshow(WINDOW_NAME, orig_frame);
-        }
+        cv::rectangle(orig_frame, cv::Point(mask_y_min, mask_x_min), cv::Point(mask_y_max, mask_x_max),
+            cv::Scalar(0, 255, 0), 3);
+        cv::imshow(WINDOW_NAME, orig_frame);
 
         if (cv::waitKey(1) == 'q') {
             break;

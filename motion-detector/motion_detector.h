@@ -29,7 +29,6 @@ private:
     int angle_down_max;
     int binary_threshold;
     int threshold_count;
-    bool show_cropped;
     double pyr_scale;
     int levels;
     int winsize;
