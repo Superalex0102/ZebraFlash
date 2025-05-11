@@ -120,32 +120,28 @@ int MotionDetector::calculateMaxMeanColumn(const std::vector<std::vector<int>>& 
     return std::distance(column_means.begin(), std::max_element(column_means.begin(), column_means.end()));
 }
 
-float MotionDetector::detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_previous, cv::UMat& hsv) {
+float MotionDetector::detectMotion(cv::UMat& frame, cv::UMat& gray, cv::UMat& gray_previous, cv::UMat& hsv) {
     int64 start_time = cv::getTickCount();
 
-    cv::Mat flow(gray.size(), CV_32FC2);
+    cv::UMat flow(gray.size(), CV_32FC2);
 
     if (use_gpu && cv::ocl::useOpenCL()) {
-        cv::UMat gray_previous_umat = gray_previous.getUMat(cv::ACCESS_READ);
-        cv::UMat gray_umat = gray.getUMat(cv::ACCESS_READ);
-        cv::UMat flow;
-
-        cv::calcOpticalFlowFarneback(gray_previous_umat, gray_umat, flow,
+        cv::calcOpticalFlowFarneback(gray_previous, gray, flow,
             pyr_scale, levels, winsize, iterations, poly_n, poly_sigma, 0);
     } else if (use_multi_thread) {
         int cols_per_thread = gray.cols / thread_amount;
         std::vector<std::future<void>> futures;
-        std::vector<cv::Mat> flow_parts(thread_amount);
+        std::vector<cv::UMat> flow_parts(thread_amount);
 
         for (int i = 0; i < thread_amount; i++) {
             int start_col = i * cols_per_thread;
             int end_col = (i == thread_amount - 1) ? gray.cols : (i + 1) * cols_per_thread;
 
             cv::Range col_range(start_col, end_col);
-            cv::Mat gray_section = gray(cv::Range::all(), col_range);
-            cv::Mat prev_section = gray_previous(cv::Range::all(), col_range);
+            cv::UMat gray_section = gray(cv::Range::all(), col_range);
+            cv::UMat prev_section = gray_previous(cv::Range::all(), col_range);
 
-            flow_parts[i] = cv::Mat(gray_section.rows, end_col - start_col, CV_32FC2);
+            flow_parts[i] = cv::UMat(gray_section.rows, end_col - start_col, CV_32FC2);
 
             futures.push_back(thread_pool->enqueue([=, &flow_parts]() {
                 cv::calcOpticalFlowFarneback(prev_section, gray_section, flow_parts[i],
@@ -269,14 +265,14 @@ float MotionDetector::detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_
     return move_mode;
 }
 
-void MotionDetector::processFrame(cv::Mat& frame, cv::Mat& orig_frame, cv::Mat& gray_previous) {
+void MotionDetector::processFrame(cv::UMat& frame, cv::UMat& orig_frame, cv::UMat& gray_previous) {
     frame = frame(cv::Range(mask_x_min, mask_x_max), cv::Range(mask_y_min, mask_y_max));
 
     cv::UMat frame_resized;
     cv::Size res(static_cast<int>(frame.cols * res_ratio), static_cast<int>(frame.rows * res_ratio));
     cv::resize(frame, frame_resized, res, 0, 0, cv::INTER_CUBIC);
 
-    cv::Mat gray;
+    cv::UMat gray;
     cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
 
     cv::UMat hsv(frame.size(), CV_8UC3, cv::Scalar(0, 255, 0));
@@ -345,11 +341,11 @@ void MotionDetector::run() {
         return;
     }
 
-    cv::Mat gray_previous;
+    cv::UMat gray_previous;
     cv::cvtColor(frame_previous(cv::Range(mask_x_min, mask_x_max), cv::Range(mask_y_min, mask_y_max)),
                  gray_previous, cv::COLOR_BGR2GRAY);
 
-    cv::Mat frame, orig_frame;
+    cv::UMat frame, orig_frame;
     bool grabbed;
 
     while (true) {

@@ -51,8 +51,8 @@ private:
     float calculateMode(const std::vector<float>& values);
     void roll(std::vector<std::vector<int>>& map);
     int calculateMaxMeanColumn(const std::vector<std::vector<int>>& map);
-    void processFrame(cv::Mat& frame, cv::Mat& orig_frame, cv::Mat& gray_previous);
-    float detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_previous, cv::UMat& hsv);
+    void processFrame(cv::UMat& frame, cv::UMat& orig_frame, cv::UMat& gray_previous);
+    float detectMotion(cv::UMat& frame, cv::UMat& gray, cv::UMat& gray_previous, cv::UMat& hsv);
 };
 
 #endif //MOTION_DETECTOR_H
