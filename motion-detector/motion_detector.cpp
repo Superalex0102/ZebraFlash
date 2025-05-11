@@ -7,8 +7,19 @@
 
 #include "../benchmark/benchmark.h"
 
+//TODO: better gpu performance
+//TODO: custom multithread implementation
+//TODO: folyamatosan adogatva legyenek az adatok a GPU-nak, egy threadből, hogy ne sleepeljen
+
 MotionDetector::MotionDetector(const std::string &configFile) {
     loadConfig(configFile);
+
+    if (use_multi_thread) {
+        thread_amount = thread_amount == -1 ? std::thread::hardware_concurrency() : thread_amount;
+        thread_pool = std::make_unique<ThreadPool>(thread_amount);
+    }
+
+    // cv::setNumThreads(16);
 
     if (cv::ocl::haveOpenCL() && use_gpu) {
         cv::ocl::setUseOpenCL(true);
@@ -53,11 +64,12 @@ void MotionDetector::loadConfig(const std::string &configFile) {
     poly_sigma = config["poly_sigma"].as<double>();
     debug = config["debug"].as<bool>();
     use_gpu = config["use_gpu"].as<bool>();
+    use_multi_thread = config["use_multi_thread"].as<bool>();
+    thread_amount = config["thread_amount"].as<int>();
 }
 
 float MotionDetector::calculateMode(const std::vector<float>& values) {
     if (values.empty()) {
-        std::cerr << "Error: No data available to calculate mode." << std::endl;
         return std::numeric_limits<float>::quiet_NaN();
     }
 
@@ -109,37 +121,67 @@ int MotionDetector::calculateMaxMeanColumn(const std::vector<std::vector<int>>& 
     return std::distance(column_means.begin(), std::max_element(column_means.begin(), column_means.end()));
 }
 
-float MotionDetector::detectMotion(cv::UMat& frame, cv::UMat& gray, cv::UMat& gray_previous, cv::UMat& hsv) {
-    cv::UMat flow;
+float MotionDetector::detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_previous, cv::UMat& hsv) {
+    int64 start_time = cv::getTickCount();
 
-    cv::calcOpticalFlowFarneback(gray_previous, gray, flow, pyr_scale, levels,
-        winsize, iterations, poly_n, poly_sigma, 0);
+    cv::Mat flow(gray.size(), CV_32FC2);
+
+    if (use_multi_thread) {
+        int cols_per_thread = gray.cols / thread_amount;
+        std::vector<std::future<void>> futures;
+        std::vector<cv::Mat> flow_parts(thread_amount);
+
+        for (int i = 0; i < thread_amount; i++) {
+            int start_col = i * cols_per_thread;
+            int end_col = (i == thread_amount - 1) ? gray.cols : (i + 1) * cols_per_thread;
+
+            cv::Range col_range(start_col, end_col);
+            cv::Mat gray_section = gray(cv::Range::all(), col_range);
+            cv::Mat prev_section = gray_previous(cv::Range::all(), col_range);
+
+            flow_parts[i] = cv::Mat(gray_section.rows, end_col - start_col, CV_32FC2);
+
+            futures.push_back(thread_pool->enqueue([=, &flow_parts]() {
+                cv::calcOpticalFlowFarneback(prev_section, gray_section, flow_parts[i],
+                    pyr_scale, levels, winsize, iterations, poly_n, poly_sigma, 0);
+            }));
+        }
+
+        for (auto& future : futures) {
+            future.get();
+        }
+
+        for (int i = 0; i < thread_amount; i++) {
+            int start_col = i * cols_per_thread;
+            int end_col = (i == thread_amount - 1) ? gray.cols : (i + 1) * cols_per_thread;
+
+            cv::Range col_range(start_col, end_col);
+            flow_parts[i].copyTo(flow(cv::Range::all(), col_range));
+        }
+    } else {
+        cv::calcOpticalFlowFarneback(gray_previous, gray, flow, pyr_scale, levels,
+            winsize, iterations, poly_n, poly_sigma, 0);
+    }
+
+    int64 end_time = cv::getTickCount();
+    double time_taken_ms = (end_time - start_time) * 1000.0 / cv::getTickFrequency();
+    std::cout << "calcOpticalFlowFarneback took " << time_taken_ms << " ms" << std::endl;
 
     std::vector<cv::UMat> flow_channels(2);
     cv::split(flow, flow_channels);
 
-    cv::UMat mag, ang;
+    cv::Mat mag, ang;
     cv::cartToPolar(flow_channels[0], flow_channels[1], mag, ang, true);
 
-    cv::Mat ang_mat = ang.getMat(cv::ACCESS_READ);
-    cv::Mat mag_mat = mag.getMat(cv::ACCESS_READ);
-
-    cv::Mat ang_180 = ang_mat / 2;
-    cv::Mat mask = mag_mat > threshold;
+    cv::Mat ang_180 = ang / 2;
+    cv::Mat mask = mag > threshold;
 
     std::vector<cv::Point> non_zero_points;
     cv::findNonZero(mask, non_zero_points);
 
     std::vector<float> move_sense;
-    /*for (int i = 0; i < ang.rows; ++i) {
-        for (int j = 0; j < ang.cols; ++j) {
-            if (mask.at<uchar>(i, j)) {
-                move_sense.push_back(ang_180.at<float>(i, j));
-            }
-        }
-    }*/
     for (const auto& pt : non_zero_points) {
-        move_sense.push_back(ang_mat.at<float>(pt));
+        move_sense.push_back(ang.at<float>(pt));
     }
 
     float move_mode = calculateMode(move_sense);
@@ -220,14 +262,14 @@ float MotionDetector::detectMotion(cv::UMat& frame, cv::UMat& gray, cv::UMat& gr
     return move_mode;
 }
 
-void MotionDetector::processFrame(cv::UMat& frame, cv::UMat& orig_frame, cv::UMat& gray_previous) {
+void MotionDetector::processFrame(cv::Mat& frame, cv::Mat& orig_frame, cv::Mat& gray_previous) {
     frame = frame(cv::Range(mask_x_min, mask_x_max), cv::Range(mask_y_min, mask_y_max));
 
     cv::UMat frame_resized;
     cv::Size res(static_cast<int>(frame.cols * res_ratio), static_cast<int>(frame.rows * res_ratio));
     cv::resize(frame, frame_resized, res, 0, 0, cv::INTER_CUBIC);
 
-    cv::UMat gray;
+    cv::Mat gray;
     cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
 
     cv::UMat hsv(frame.size(), CV_8UC3, cv::Scalar(0, 255, 0));
@@ -299,11 +341,11 @@ void MotionDetector::run() {
         return;
     }
 
-    cv::UMat gray_previous;
+    cv::Mat gray_previous;
     cv::cvtColor(frame_previous(cv::Range(mask_x_min, mask_x_max), cv::Range(mask_y_min, mask_y_max)),
                  gray_previous, cv::COLOR_BGR2GRAY);
 
-    cv::UMat frame, orig_frame;
+    cv::Mat frame, orig_frame;
     bool grabbed;
 
     while (true) {
