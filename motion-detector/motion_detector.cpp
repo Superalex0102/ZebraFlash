@@ -126,7 +126,14 @@ float MotionDetector::detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_
 
     cv::Mat flow(gray.size(), CV_32FC2);
 
-    if (use_multi_thread) {
+    if (use_gpu && cv::ocl::useOpenCL()) {
+        cv::UMat gray_previous_umat = gray_previous.getUMat(cv::ACCESS_READ);
+        cv::UMat gray_umat = gray.getUMat(cv::ACCESS_READ);
+        cv::UMat flow;
+
+        cv::calcOpticalFlowFarneback(gray_previous_umat, gray_umat, flow,
+            pyr_scale, levels, winsize, iterations, poly_n, poly_sigma, 0);
+    } else if (use_multi_thread) {
         int cols_per_thread = gray.cols / thread_amount;
         std::vector<std::future<void>> futures;
         std::vector<cv::Mat> flow_parts(thread_amount);
@@ -158,7 +165,8 @@ float MotionDetector::detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_
             cv::Range col_range(start_col, end_col);
             flow_parts[i].copyTo(flow(cv::Range::all(), col_range));
         }
-    } else {
+    }
+    else {
         cv::calcOpticalFlowFarneback(gray_previous, gray, flow, pyr_scale, levels,
             winsize, iterations, poly_n, poly_sigma, 0);
     }

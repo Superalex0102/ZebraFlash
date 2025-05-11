@@ -14,10 +14,10 @@
   angle_down_min: 40,         # Movement between these two angles should be detected while walking downwards
   angle_down_max: 150,         # Movement between these two angles should be detected while walking downwards
   pyr_scale: 0.5,         # Image scale (<1) to build pyramids for each image
-  levels: 1,              # Number of pyramid layers
-  winsize: 15,            # Averaging window size
-  iterations: 1,          # Number of iterations the algorithm does at each pyramid level
-  poly_n: 5,              # Size of the pixel neighborhood used to find polynomial expansion in each pixel
+  levels: 2,              # Number of pyramid layers
+  winsize: 25,            # Averaging window size
+  iterations: 2,          # Number of iterations the algorithm does at each pyramid level
+  poly_n: 3,              # Size of the pixel neighborhood used to find polynomial expansion in each pixel
   poly_sigma: 1.1,        # Standard deviation of the Gaussian that is used to smooth derivatives used as a basis for the polynomial expansion
 
   # Other parameters
@@ -28,7 +28,7 @@
   show_cropped: false,     # show the cropped image instead of the original frame
   seek: 25000,            # video starting position in milliseconds
   debug: false,            # debug messages and screens displayed
-  use_gpu: true,            # GPU acceleration is being used
+  use_gpu: false,            # GPU acceleration is being used
   use_multi_thread: true,            # Multi thread is being used
   thread_amount: -1,            # number of threads used for multi threading tasks, -1 for auto
 }
