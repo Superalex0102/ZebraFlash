@@ -6,6 +6,7 @@
 #include <thread>
 
 #include "../benchmark/benchmark.h"
+#include "../frame-grabber/frame_grabber.h"
 
 //TODO: better gpu performance
 //TODO: custom multithread implementation
@@ -346,13 +347,25 @@ void MotionDetector::run() {
                  gray_previous, cv::COLOR_BGR2GRAY);
 
     cv::UMat frame, orig_frame;
-    bool grabbed;
 
-    while (true) {
-        grabbed = cap.read(frame);
+    FrameGrabber<cv::UMat> frame_queue(5);
+    std::atomic<bool> running(true);
 
+    std::thread reader_thread([&]() {
+    while (running) {
+        cv::UMat frame;
+        bool grabbed = cap.read(frame);
         if (!grabbed || frame.empty()) {
-            std::cerr << "Error: Failed to grab frame" << std::endl;
+            running = false;
+            break;
+        }
+        frame_queue.push(frame);
+    }
+});
+
+    while (running) {
+        cv::UMat frame;
+        if (!frame_queue.pop(frame)) {
             break;
         }
 
@@ -380,6 +393,8 @@ void MotionDetector::run() {
         }
     }
 
+    running = false;
+    reader_thread.join();
     saveBenchmarkResults(use_gpu, results);
 
     cap.release();
