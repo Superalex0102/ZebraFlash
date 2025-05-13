@@ -7,10 +7,6 @@
 
 #include "../benchmark/benchmark.h"
 
-//TODO: better gpu performance
-//TODO: custom multithread implementation
-//TODO: folyamatosan adogatva legyenek az adatok a GPU-nak, egy threadből, hogy ne sleepeljen
-
 MotionDetector::MotionDetector(const std::string &configFile) {
     loadConfig(configFile);
 
