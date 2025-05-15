@@ -7,10 +7,6 @@
 
 #include "../benchmark/benchmark.h"
 
-//TODO: better gpu performance
-//TODO: custom multithread implementation
-//TODO: folyamatosan adogatva legyenek az adatok a GPU-nak, egy threadből, hogy ne sleepeljen
-
 MotionDetector::MotionDetector(const std::string &configFile) {
     loadConfig(configFile);
 
@@ -18,8 +14,6 @@ MotionDetector::MotionDetector(const std::string &configFile) {
         thread_amount = thread_amount == -1 ? std::thread::hardware_concurrency() : thread_amount;
         thread_pool = std::make_unique<ThreadPool>(thread_amount);
     }
-
-    // cv::setNumThreads(16);
 
     if (cv::ocl::haveOpenCL() && use_gpu) {
         cv::ocl::setUseOpenCL(true);
@@ -120,7 +114,7 @@ int MotionDetector::calculateMaxMeanColumn(const std::vector<std::vector<int>>& 
     return std::distance(column_means.begin(), std::max_element(column_means.begin(), column_means.end()));
 }
 
-float MotionDetector::detectMotion(cv::UMat& frame, cv::UMat& gray, cv::UMat& gray_previous, cv::UMat& hsv) {
+float MotionDetector::detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_previous, cv::Mat& hsv) {
     int64 start_time = cv::getTickCount();
 
     cv::UMat flow(gray.size(), CV_32FC2);
@@ -131,17 +125,17 @@ float MotionDetector::detectMotion(cv::UMat& frame, cv::UMat& gray, cv::UMat& gr
     } else if (use_multi_thread) {
         int cols_per_thread = gray.cols / thread_amount;
         std::vector<std::future<void>> futures;
-        std::vector<cv::UMat> flow_parts(thread_amount);
+        std::vector<cv::Mat> flow_parts(thread_amount);
 
         for (int i = 0; i < thread_amount; i++) {
             int start_col = i * cols_per_thread;
             int end_col = (i == thread_amount - 1) ? gray.cols : (i + 1) * cols_per_thread;
 
             cv::Range col_range(start_col, end_col);
-            cv::UMat gray_section = gray(cv::Range::all(), col_range);
-            cv::UMat prev_section = gray_previous(cv::Range::all(), col_range);
+            cv::Mat gray_section = gray(cv::Range::all(), col_range);
+            cv::Mat prev_section = gray_previous(cv::Range::all(), col_range);
 
-            flow_parts[i] = cv::UMat(gray_section.rows, end_col - start_col, CV_32FC2);
+            flow_parts[i] = cv::Mat(gray_section.rows, end_col - start_col, CV_32FC2);
 
             futures.push_back(thread_pool->enqueue([=, &flow_parts]() {
                 cv::calcOpticalFlowFarneback(prev_section, gray_section, flow_parts[i],
@@ -170,7 +164,7 @@ float MotionDetector::detectMotion(cv::UMat& frame, cv::UMat& gray, cv::UMat& gr
     double time_taken_ms = (end_time - start_time) * 1000.0 / cv::getTickFrequency();
     std::cout << "calcOpticalFlowFarneback took " << time_taken_ms << " ms" << std::endl;
 
-    std::vector<cv::UMat> flow_channels(2);
+    std::vector<cv::Mat> flow_channels(2);
     cv::split(flow, flow_channels);
 
     cv::Mat mag, ang;
@@ -210,13 +204,13 @@ float MotionDetector::detectMotion(cv::UMat& frame, cv::UMat& gray, cv::UMat& gr
         directions_map[directions_map.size() - 1][3] = 0;
     }
     else { //No movement detected
-        cv::UMat fg_mask;
+        cv::Mat fg_mask;
         backSub->apply(frame, fg_mask);
 
-        cv::UMat fg_mask_blurred;
+        cv::Mat fg_mask_blurred;
         cv::GaussianBlur(fg_mask, fg_mask_blurred, cv::Size(7, 7), 0);
 
-        cv::UMat tresh_frame;
+        cv::Mat tresh_frame;
         cv::threshold(fg_mask_blurred, tresh_frame, binary_threshold, 255, cv::THRESH_BINARY);
 
         if (debug) {
@@ -240,10 +234,10 @@ float MotionDetector::detectMotion(cv::UMat& frame, cv::UMat& gray, cv::UMat& gr
     roll(directions_map);
 
     if (hsv.empty() || hsv.type() != CV_8UC3) {
-        hsv = cv::UMat(frame.size(), CV_8UC3, cv::Scalar(0, 255, 0));
+        hsv = cv::Mat(frame.size(), CV_8UC3, cv::Scalar(0, 255, 0));
     }
 
-    std::vector<cv::UMat> hsv_channels;
+    std::vector<cv::Mat> hsv_channels;
     cv::split(hsv, hsv_channels);
 
     if (hsv_channels.size() == 3) {
@@ -265,17 +259,17 @@ float MotionDetector::detectMotion(cv::UMat& frame, cv::UMat& gray, cv::UMat& gr
     return move_mode;
 }
 
-void MotionDetector::processFrame(cv::UMat& frame, cv::UMat& orig_frame, cv::UMat& gray_previous) {
+void MotionDetector::processFrame(cv::Mat& frame, cv::Mat& orig_frame, cv::Mat& gray_previous) {
     frame = frame(cv::Range(mask_x_min, mask_x_max), cv::Range(mask_y_min, mask_y_max));
 
-    cv::UMat frame_resized;
+    cv::Mat frame_resized;
     cv::Size res(static_cast<int>(frame.cols * res_ratio), static_cast<int>(frame.rows * res_ratio));
     cv::resize(frame, frame_resized, res, 0, 0, cv::INTER_CUBIC);
 
-    cv::UMat gray;
+    cv::Mat gray;
     cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
 
-    cv::UMat hsv(frame.size(), CV_8UC3, cv::Scalar(0, 255, 0));
+    cv::Mat hsv(frame.size(), CV_8UC3, cv::Scalar(0, 255, 0));
 
     float move_mode = detectMotion(frame, gray, gray_previous, hsv);
 
@@ -295,7 +289,7 @@ void MotionDetector::processFrame(cv::UMat& frame, cv::UMat& orig_frame, cv::UMa
         text = "WAITING";
     }
 
-    cv::UMat rgb;
+    cv::Mat rgb;
     cv::cvtColor(hsv, rgb, cv::COLOR_HSV2BGR);
 
     int text_thinkness = 6;
@@ -334,18 +328,18 @@ void MotionDetector::run() {
 
     cap.set(cv::CAP_PROP_POS_MSEC, seek);
 
-    cv::UMat frame_previous;
+    cv::Mat frame_previous;
     cap >> frame_previous;
     if (frame_previous.empty()) {
         std::cerr << "Error: Failed to grab first frame" << std::endl;
         return;
     }
 
-    cv::UMat gray_previous;
+    cv::Mat gray_previous;
     cv::cvtColor(frame_previous(cv::Range(mask_x_min, mask_x_max), cv::Range(mask_y_min, mask_y_max)),
                  gray_previous, cv::COLOR_BGR2GRAY);
 
-    cv::UMat frame, orig_frame;
+    cv::Mat frame, orig_frame;
     bool grabbed;
 
     while (true) {
