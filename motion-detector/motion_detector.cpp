@@ -117,7 +117,7 @@ int MotionDetector::calculateMaxMeanColumn(const std::vector<std::vector<int>>& 
 }
 
 float MotionDetector::detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_previous, cv::Mat& hsv) {
-    cv::Mat flow(gray.size(), CV_32FC2);
+    cv::Mat flow, mask, ang, ang_180, mag;
 
     if (use_gpu && cv::cuda::getCudaEnabledDeviceCount() > 0) {
         try {
@@ -128,7 +128,21 @@ float MotionDetector::detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_
             auto farneback = cv::cuda::FarnebackOpticalFlow::create(
                 levels, pyr_scale, false, winsize, iterations, poly_n, poly_sigma, 0);
             farneback->calc(d_gray_previous, d_gray, d_flow);
-            d_flow.download(flow);
+
+            std::vector<cv::cuda::GpuMat> d_flow_channels(3);
+            cv::cuda::split(d_flow, d_flow_channels);
+
+            cv::cuda::GpuMat d_mag, d_ang;
+            cv::cuda::cartToPolar(d_flow_channels[0], d_flow_channels[1], d_mag, d_ang, true);
+
+            cv::cuda::GpuMat d_ang_180;
+            cv::cuda::divide(d_ang, cv::Scalar(2.0), d_ang_180);
+
+            cv::cuda::GpuMat d_mask;
+            cv::cuda::threshold(d_mag, d_mask, threshold, 255, cv::THRESH_BINARY);
+
+            d_mask.download(mask);
+            d_ang.download(ang);
         }
         catch (const cv::Exception& e) {
             std::cerr << "CUDA Optical Flow failed: " << e.what() << std::endl;
@@ -167,20 +181,19 @@ float MotionDetector::detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_
             cv::Range col_range(start_col, end_col);
             flow_parts[i].copyTo(flow(cv::Range::all(), col_range));
         }
+
+        std::vector<cv::Mat> flow_channels(2);
+        cv::split(flow, flow_channels);
+
+        cv::cartToPolar(flow_channels[0], flow_channels[1], mag, ang, true);
+
+        ang_180 = ang / 2;
+        mask = mag > threshold;
     }
     else {
         cv::calcOpticalFlowFarneback(gray_previous, gray, flow, pyr_scale, levels,
             winsize, iterations, poly_n, poly_sigma, 0);
     }
-
-    std::vector<cv::Mat> flow_channels(2);
-    cv::split(flow, flow_channels);
-
-    cv::Mat mag, ang;
-    cv::cartToPolar(flow_channels[0], flow_channels[1], mag, ang, true);
-
-    cv::Mat ang_180 = ang / 2;
-    cv::Mat mask = mag > threshold;
 
     std::vector<cv::Point> non_zero_points;
     cv::findNonZero(mask, non_zero_points);
