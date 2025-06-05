@@ -7,8 +7,6 @@
 const std::string INPUT_FILE = "../../config/params_input_file.yml";
 
 int main() {
-    std::cout << "Current working directory: "
-              << std::filesystem::current_path() << std::endl;
     try {
         MotionDetector detector(INPUT_FILE);
         detector.run();
