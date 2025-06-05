@@ -1,5 +1,7 @@
 #include <iostream>
 #include <opencv2/core/ocl.hpp>
+#include <opencv2/cudaoptflow.hpp>
+#include <opencv2/cudaarithm.hpp>
 
 #include "motion_detector.h"
 
@@ -115,14 +117,25 @@ int MotionDetector::calculateMaxMeanColumn(const std::vector<std::vector<int>>& 
 }
 
 float MotionDetector::detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_previous, cv::Mat& hsv) {
-    int64 start_time = cv::getTickCount();
+    cv::Mat flow(gray.size(), CV_32FC2);
 
-    cv::UMat flow(gray.size(), CV_32FC2);
+    if (use_gpu && cv::cuda::getCudaEnabledDeviceCount() > 0) {
+        try {
+            cv::cuda::GpuMat d_gray_previous(gray_previous);
+            cv::cuda::GpuMat d_gray(gray);
+            cv::cuda::GpuMat d_flow;
 
-    if (use_gpu && cv::ocl::useOpenCL()) {
-        cv::calcOpticalFlowFarneback(gray_previous, gray, flow,
-            pyr_scale, levels, winsize, iterations, poly_n, poly_sigma, 0);
-    } else if (use_multi_thread) {
+            auto farneback = cv::cuda::FarnebackOpticalFlow::create(
+                levels, pyr_scale, false, winsize, iterations, poly_n, poly_sigma, 0);
+            farneback->calc(d_gray_previous, d_gray, d_flow);
+            d_flow.download(flow);
+        }
+        catch (const cv::Exception& e) {
+            std::cerr << "CUDA Optical Flow failed: " << e.what() << std::endl;
+            return -1.0f;
+        }
+    }
+    else if (use_multi_thread) {
         int cols_per_thread = gray.cols / thread_amount;
         std::vector<std::future<void>> futures;
         std::vector<cv::Mat> flow_parts(thread_amount);
@@ -159,10 +172,6 @@ float MotionDetector::detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_
         cv::calcOpticalFlowFarneback(gray_previous, gray, flow, pyr_scale, levels,
             winsize, iterations, poly_n, poly_sigma, 0);
     }
-
-    int64 end_time = cv::getTickCount();
-    double time_taken_ms = (end_time - start_time) * 1000.0 / cv::getTickFrequency();
-    std::cout << "calcOpticalFlowFarneback took " << time_taken_ms << " ms" << std::endl;
 
     std::vector<cv::Mat> flow_channels(2);
     cv::split(flow, flow_channels);
@@ -207,11 +216,17 @@ float MotionDetector::detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_
         cv::Mat fg_mask;
         backSub->apply(frame, fg_mask);
 
+        int64 start_time = cv::getTickCount();
+
         cv::Mat fg_mask_blurred;
         cv::GaussianBlur(fg_mask, fg_mask_blurred, cv::Size(7, 7), 0);
 
         cv::Mat tresh_frame;
         cv::threshold(fg_mask_blurred, tresh_frame, binary_threshold, 255, cv::THRESH_BINARY);
+
+        int64 end_time = cv::getTickCount();
+        double time_taken_ms = (end_time - start_time) * 1000.0 / cv::getTickFrequency();
+        std::cout << "Difference took " << time_taken_ms << " ms" << std::endl;
 
         if (debug) {
             cv::imshow("tresh_frame", tresh_frame);

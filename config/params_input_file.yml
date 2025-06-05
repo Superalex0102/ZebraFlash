@@ -1,6 +1,6 @@
 {
   # Main parameters
-  video_src: "../input/out2.mp4v",  # Path of the input file.
+  video_src: "../../input/out2.mp4v",  # Path of the input file.
   res_ratio: 0.14,        # Scale resolution for computing optical flow
   # The image processing area (area of interest) can be defined with the following margins
   upper_margin: 220,      # MASK_X_MIN
@@ -28,6 +28,6 @@
   seek: 25000,            # video starting position in milliseconds
   debug: false,            # debug messages and screens displayed
   use_gpu: true,            # GPU acceleration is being used
-  use_multi_thread: true,            # Multi thread is being used
+  use_multi_thread: false,            # Multi thread is being used
   thread_amount: -1,            # number of threads used for multi threading tasks, -1 for auto
 }
