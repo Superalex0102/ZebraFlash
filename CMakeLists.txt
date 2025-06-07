@@ -3,6 +3,7 @@ project(ZebraFlash)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -g")
 
 include(FetchContent)
 
@@ -13,11 +14,21 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(yaml-cpp)
 
+if (MSVC)
+    # Enable debug info in Release
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Zi")
+    set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} /DEBUG")
+endif()
+
 if(DEFINED ENV{OPENCV_DIR})
     set(OpenCV_DIR $ENV{OPENCV_DIR})
 endif()
 
 find_package(OpenCV REQUIRED)
+
+message(STATUS "OpenCV version: ${OpenCV_VERSION}")
+message(STATUS "OpenCV libs: ${OpenCV_LIBS}")
+message(STATUS "OpenCV include dirs: ${OpenCV_INCLUDE_DIRS}")
 
 include_directories( ${OpenCV_INCLUDE_DIRS} )
 

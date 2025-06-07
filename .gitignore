@@ -76,5 +76,6 @@ fabric.properties
 
 .idea/
 cmake-build-debug/
+cmake-build-release-visual-studio/
 input/
 _deps/

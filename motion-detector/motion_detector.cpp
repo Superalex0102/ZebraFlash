@@ -1,5 +1,7 @@
 #include <iostream>
 #include <opencv2/core/ocl.hpp>
+#include <opencv2/cudaoptflow.hpp>
+#include <opencv2/cudaarithm.hpp>
 
 #include "motion_detector.h"
 
@@ -14,8 +16,6 @@ MotionDetector::MotionDetector(const std::string &configFile) {
         thread_amount = thread_amount == -1 ? std::thread::hardware_concurrency() : thread_amount;
         thread_pool = std::make_unique<ThreadPool>(thread_amount);
     }
-
-    // cv::setNumThreads(16);
 
     if (cv::ocl::haveOpenCL() && use_gpu) {
         cv::ocl::setUseOpenCL(true);
@@ -51,7 +51,6 @@ void MotionDetector::loadConfig(const std::string &configFile) {
     angle_down_max = config["angle_down_max"].as<int>();
     binary_threshold = config["binary_threshold"].as<int>();
     threshold_count = config["threshold_count"].as<int>();
-    show_cropped = config["show_cropped"].as<bool>();
     pyr_scale = config["pyr_scale"].as<double>();
     levels = config["levels"].as<int>();
     winsize = config["winsize"].as<int>();
@@ -117,12 +116,61 @@ int MotionDetector::calculateMaxMeanColumn(const std::vector<std::vector<int>>& 
     return std::distance(column_means.begin(), std::max_element(column_means.begin(), column_means.end()));
 }
 
-float MotionDetector::detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_previous, cv::UMat& hsv) {
-    int64 start_time = cv::getTickCount();
+static cv::cuda::GpuMat d_gray_previous, d_gray, d_flow;
 
+float MotionDetector::detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_previous, cv::Mat& hsv) {
     cv::Mat flow(gray.size(), CV_32FC2);
+    cv::Mat mask, ang, ang_180, mag;
 
-    if (use_multi_thread) {
+    if (use_gpu && cv::cuda::getCudaEnabledDeviceCount() > 0) {
+        try {
+            cv::cuda::Stream stream;
+            // cv::cuda::GpuMat d_gray_previous(gray_previous);
+            // cv::cuda::GpuMat d_gray(gray);
+            // cv::cuda::GpuMat d_flow;
+            d_gray.upload(gray, stream);
+            d_gray_previous.upload(gray_previous, stream);
+
+            if (d_flow.size() != gray.size() || d_flow.type() != CV_32FC2) {
+                d_flow.release();
+                d_flow.create(gray.size(), CV_32FC2);
+            }
+
+            static auto farneback = cv::cuda::FarnebackOpticalFlow::create(
+                levels, pyr_scale, false, winsize, iterations, poly_n, poly_sigma, 0);
+
+            int64 start_time = cv::getTickCount();
+
+            farneback->calc(d_gray_previous, d_gray, d_flow, stream);
+
+            int64 end_time = cv::getTickCount();
+            double time_taken_ms = (end_time - start_time) * 1000.0 / cv::getTickFrequency();
+            std::cout << "Difference took " << time_taken_ms << " ms" << std::endl;
+
+            std::vector<cv::cuda::GpuMat> d_flow_channels(3);
+            cv::cuda::split(d_flow, d_flow_channels, stream);
+
+            cv::cuda::GpuMat d_mag, d_ang;
+            cv::cuda::cartToPolar(d_flow_channels[0], d_flow_channels[1], d_mag, d_ang, true, stream);
+
+            cv::cuda::GpuMat d_ang_180;
+            cv::cuda::divide(d_ang, cv::Scalar(2.0), d_ang_180);
+
+            cv::cuda::GpuMat d_mask;
+            cv::cuda::threshold(d_mag, d_mask, threshold, 255, cv::THRESH_BINARY, stream);
+
+            d_mask.download(mask, stream);
+            d_ang.download(ang, stream);
+            d_ang_180.download(ang_180, stream);
+            d_mag.download(mag, stream);
+            stream.waitForCompletion();
+        }
+        catch (const cv::Exception& e) {
+            std::cerr << "CUDA Optical Flow failed: " << e.what() << std::endl;
+            return -1.0f;
+        }
+    }
+    else if (use_multi_thread) {
         int cols_per_thread = gray.cols / thread_amount;
         std::vector<std::future<void>> futures;
         std::vector<cv::Mat> flow_parts(thread_amount);
@@ -154,23 +202,19 @@ float MotionDetector::detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_
             cv::Range col_range(start_col, end_col);
             flow_parts[i].copyTo(flow(cv::Range::all(), col_range));
         }
-    } else {
+
+        std::vector<cv::Mat> flow_channels(2);
+        cv::split(flow, flow_channels);
+
+        cv::cartToPolar(flow_channels[0], flow_channels[1], mag, ang, true);
+
+        ang_180 = ang / 2;
+        mask = mag > threshold;
+    }
+    else {
         cv::calcOpticalFlowFarneback(gray_previous, gray, flow, pyr_scale, levels,
             winsize, iterations, poly_n, poly_sigma, 0);
     }
-
-    int64 end_time = cv::getTickCount();
-    double time_taken_ms = (end_time - start_time) * 1000.0 / cv::getTickFrequency();
-    std::cout << "calcOpticalFlowFarneback took " << time_taken_ms << " ms" << std::endl;
-
-    std::vector<cv::UMat> flow_channels(2);
-    cv::split(flow, flow_channels);
-
-    cv::Mat mag, ang;
-    cv::cartToPolar(flow_channels[0], flow_channels[1], mag, ang, true);
-
-    cv::Mat ang_180 = ang / 2;
-    cv::Mat mask = mag > threshold;
 
     std::vector<cv::Point> non_zero_points;
     cv::findNonZero(mask, non_zero_points);
@@ -203,13 +247,13 @@ float MotionDetector::detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_
         directions_map[directions_map.size() - 1][3] = 0;
     }
     else { //No movement detected
-        cv::UMat fg_mask;
+        cv::Mat fg_mask;
         backSub->apply(frame, fg_mask);
 
-        cv::UMat fg_mask_blurred;
+        cv::Mat fg_mask_blurred;
         cv::GaussianBlur(fg_mask, fg_mask_blurred, cv::Size(7, 7), 0);
 
-        cv::UMat tresh_frame;
+        cv::Mat tresh_frame;
         cv::threshold(fg_mask_blurred, tresh_frame, binary_threshold, 255, cv::THRESH_BINARY);
 
         if (debug) {
@@ -233,10 +277,10 @@ float MotionDetector::detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_
     roll(directions_map);
 
     if (hsv.empty() || hsv.type() != CV_8UC3) {
-        hsv = cv::UMat(frame.size(), CV_8UC3, cv::Scalar(0, 255, 0));
+        hsv = cv::Mat(frame.size(), CV_8UC3, cv::Scalar(0, 255, 0));
     }
 
-    std::vector<cv::UMat> hsv_channels;
+    std::vector<cv::Mat> hsv_channels;
     cv::split(hsv, hsv_channels);
 
     if (hsv_channels.size() == 3) {
@@ -261,14 +305,14 @@ float MotionDetector::detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_
 void MotionDetector::processFrame(cv::Mat& frame, cv::Mat& orig_frame, cv::Mat& gray_previous) {
     frame = frame(cv::Range(mask_x_min, mask_x_max), cv::Range(mask_y_min, mask_y_max));
 
-    cv::UMat frame_resized;
+    cv::Mat frame_resized;
     cv::Size res(static_cast<int>(frame.cols * res_ratio), static_cast<int>(frame.rows * res_ratio));
     cv::resize(frame, frame_resized, res, 0, 0, cv::INTER_CUBIC);
 
     cv::Mat gray;
     cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
 
-    cv::UMat hsv(frame.size(), CV_8UC3, cv::Scalar(0, 255, 0));
+    cv::Mat hsv(frame.size(), CV_8UC3, cv::Scalar(0, 255, 0));
 
     float move_mode = detectMotion(frame, gray, gray_previous, hsv);
 
@@ -288,13 +332,10 @@ void MotionDetector::processFrame(cv::Mat& frame, cv::Mat& orig_frame, cv::Mat& 
         text = "WAITING";
     }
 
-    cv::UMat rgb;
+    cv::Mat rgb;
     cv::cvtColor(hsv, rgb, cv::COLOR_HSV2BGR);
 
     int text_thinkness = 6;
-    if (show_cropped) {
-        text_thinkness = 2;
-    }
 
     cv::putText(orig_frame, "Angle: " + std::to_string(static_cast<int>(move_mode)),
             cv::Point(30, 150), cv::FONT_HERSHEY_COMPLEX,
@@ -330,7 +371,7 @@ void MotionDetector::run() {
 
     cap.set(cv::CAP_PROP_POS_MSEC, seek);
 
-    cv::UMat frame_previous;
+    cv::Mat frame_previous;
     cap >> frame_previous;
     if (frame_previous.empty()) {
         std::cerr << "Error: Failed to grab first frame" << std::endl;
@@ -367,14 +408,9 @@ void MotionDetector::run() {
             elapsed
         });
 
-        if (show_cropped) {
-            cv::imshow(WINDOW_NAME, frame);
-        }
-        else {
-            cv::rectangle(orig_frame, cv::Point(mask_y_min, mask_x_min), cv::Point(mask_y_max, mask_x_max),
-                cv::Scalar(0, 255, 0), 3);
-            cv::imshow(WINDOW_NAME, orig_frame);
-        }
+        cv::rectangle(orig_frame, cv::Point(mask_y_min, mask_x_min), cv::Point(mask_y_max, mask_x_max),
+            cv::Scalar(0, 255, 0), 3);
+        cv::imshow(WINDOW_NAME, orig_frame);
 
         if (cv::waitKey(1) == 'q') {
             break;

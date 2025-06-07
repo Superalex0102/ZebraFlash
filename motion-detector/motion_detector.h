@@ -29,7 +29,6 @@ private:
     int angle_down_max;
     int binary_threshold;
     int threshold_count;
-    bool show_cropped;
     double pyr_scale;
     int levels;
     int winsize;
@@ -53,7 +52,7 @@ private:
     void roll(std::vector<std::vector<int>>& map);
     int calculateMaxMeanColumn(const std::vector<std::vector<int>>& map);
     void processFrame(cv::Mat& frame, cv::Mat& orig_frame, cv::Mat& gray_previous);
-    float detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_previous, cv::UMat& hsv);
+    float detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_previous, cv::Mat& hsv);
 };
 
 #endif //MOTION_DETECTOR_H
