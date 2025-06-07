@@ -27,7 +27,7 @@
   threshold_count: 0,     # minimum number of different pixels from the background model
   seek: 25000,            # video starting position in milliseconds
   debug: false,            # debug messages and screens displayed
-  use_gpu: false,            # GPU acceleration is being used
-  use_multi_thread: true,            # Multi thread is being used
+  use_gpu: true,            # GPU acceleration is being used
+  use_multi_thread: false,            # Multi thread is being used
   thread_amount: -1,            # number of threads used for multi threading tasks, -1 for auto
 }

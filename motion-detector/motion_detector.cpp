@@ -116,33 +116,54 @@ int MotionDetector::calculateMaxMeanColumn(const std::vector<std::vector<int>>& 
     return std::distance(column_means.begin(), std::max_element(column_means.begin(), column_means.end()));
 }
 
+static cv::cuda::GpuMat d_gray_previous, d_gray, d_flow;
+
 float MotionDetector::detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_previous, cv::Mat& hsv) {
-    cv::Mat flow, mask, ang, ang_180, mag;
+    cv::Mat flow(gray.size(), CV_32FC2);
+    cv::Mat mask, ang, ang_180, mag;
 
     if (use_gpu && cv::cuda::getCudaEnabledDeviceCount() > 0) {
         try {
-            cv::cuda::GpuMat d_gray_previous(gray_previous);
-            cv::cuda::GpuMat d_gray(gray);
-            cv::cuda::GpuMat d_flow;
+            cv::cuda::Stream stream;
+            // cv::cuda::GpuMat d_gray_previous(gray_previous);
+            // cv::cuda::GpuMat d_gray(gray);
+            // cv::cuda::GpuMat d_flow;
+            d_gray.upload(gray, stream);
+            d_gray_previous.upload(gray_previous, stream);
 
-            auto farneback = cv::cuda::FarnebackOpticalFlow::create(
+            if (d_flow.size() != gray.size() || d_flow.type() != CV_32FC2) {
+                d_flow.release();
+                d_flow.create(gray.size(), CV_32FC2);
+            }
+
+            static auto farneback = cv::cuda::FarnebackOpticalFlow::create(
                 levels, pyr_scale, false, winsize, iterations, poly_n, poly_sigma, 0);
-            farneback->calc(d_gray_previous, d_gray, d_flow);
+
+            int64 start_time = cv::getTickCount();
+
+            farneback->calc(d_gray_previous, d_gray, d_flow, stream);
+
+            int64 end_time = cv::getTickCount();
+            double time_taken_ms = (end_time - start_time) * 1000.0 / cv::getTickFrequency();
+            std::cout << "Difference took " << time_taken_ms << " ms" << std::endl;
 
             std::vector<cv::cuda::GpuMat> d_flow_channels(3);
-            cv::cuda::split(d_flow, d_flow_channels);
+            cv::cuda::split(d_flow, d_flow_channels, stream);
 
             cv::cuda::GpuMat d_mag, d_ang;
-            cv::cuda::cartToPolar(d_flow_channels[0], d_flow_channels[1], d_mag, d_ang, true);
+            cv::cuda::cartToPolar(d_flow_channels[0], d_flow_channels[1], d_mag, d_ang, true, stream);
 
             cv::cuda::GpuMat d_ang_180;
             cv::cuda::divide(d_ang, cv::Scalar(2.0), d_ang_180);
 
             cv::cuda::GpuMat d_mask;
-            cv::cuda::threshold(d_mag, d_mask, threshold, 255, cv::THRESH_BINARY);
+            cv::cuda::threshold(d_mag, d_mask, threshold, 255, cv::THRESH_BINARY, stream);
 
-            d_mask.download(mask);
-            d_ang.download(ang);
+            d_mask.download(mask, stream);
+            d_ang.download(ang, stream);
+            d_ang_180.download(ang_180, stream);
+            d_mag.download(mag, stream);
+            stream.waitForCompletion();
         }
         catch (const cv::Exception& e) {
             std::cerr << "CUDA Optical Flow failed: " << e.what() << std::endl;
@@ -229,17 +250,11 @@ float MotionDetector::detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_
         cv::Mat fg_mask;
         backSub->apply(frame, fg_mask);
 
-        int64 start_time = cv::getTickCount();
-
         cv::Mat fg_mask_blurred;
         cv::GaussianBlur(fg_mask, fg_mask_blurred, cv::Size(7, 7), 0);
 
         cv::Mat tresh_frame;
         cv::threshold(fg_mask_blurred, tresh_frame, binary_threshold, 255, cv::THRESH_BINARY);
-
-        int64 end_time = cv::getTickCount();
-        double time_taken_ms = (end_time - start_time) * 1000.0 / cv::getTickFrequency();
-        std::cout << "Difference took " << time_taken_ms << " ms" << std::endl;
 
         if (debug) {
             cv::imshow("tresh_frame", tresh_frame);
