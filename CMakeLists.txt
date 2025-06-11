@@ -38,7 +38,11 @@ add_executable(ZebraFlash main.cpp
         benchmark/benchmark.h
         benchmark/benchmark.cpp
         thread-pool/thread_pool.h
-        thread-pool/thread_pool.cpp)
+        thread-pool/thread_pool.cpp
+        utils/algorithm.h
+        utils/algorithm.cpp
+        utils/motion_utils.cpp
+        utils/motion_utils.h)
 
 target_link_libraries(ZebraFlash PRIVATE yaml-cpp ${OpenCV_LIBS})
 

@@ -8,6 +8,7 @@
 #include <thread>
 
 #include "../benchmark/benchmark.h"
+#include "../utils/motion_utils.h"
 
 MotionDetector::MotionDetector(const std::string &configFile) {
     loadConfig(configFile);
@@ -61,73 +62,30 @@ void MotionDetector::loadConfig(const std::string &configFile) {
     use_gpu = config["use_gpu"].as<bool>();
     use_multi_thread = config["use_multi_thread"].as<bool>();
     thread_amount = config["thread_amount"].as<int>();
+    algorithm = config["algorithm"].as<Algorithm>();
 }
 
-float MotionDetector::calculateMode(const std::vector<float>& values) {
-    if (values.empty()) {
-        return std::numeric_limits<float>::quiet_NaN();
+float MotionDetector::detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_previous, cv::Mat& hsv) {
+    float result;
+    if (algorithm == Algorithm::OPTICAL) {
+        result = detectOpticalFlowMotion(frame, gray, gray_previous, hsv);
+    }
+    else if (algorithm == Algorithm::YOLO) {
+        result = detectYOLOMotion();
     }
 
-    std::unordered_map<float, int> frequency_map;
-    for (const float& value : values) {
-        int binned = static_cast<int>(std::round(value));
-        frequency_map[binned]++;
-    }
-
-    float mode = values[0];
-    int max_count = 0;
-    for (const auto& pair : frequency_map) {
-        if (pair.second > max_count) {
-            mode = pair.first;
-            max_count = pair.second;
-        }
-    }
-    return mode;
-}
-
-void MotionDetector::roll(std::vector<std::vector<int>>& map) {
-    if (map.empty()) {
-        return;
-    }
-
-    std::vector<int> first_row = map[0];
-
-    for (size_t i = 0; i < map.size() - 1; ++i) {
-        map[i] = map[i + 1];
-    }
-
-    map[map.size() - 1] = first_row;
-}
-
-int MotionDetector::calculateMaxMeanColumn(const std::vector<std::vector<int>>& map) {
-    if (map.empty() || map[0].empty()) return -1;
-
-    size_t cols = map[0].size();
-    std::vector<float> column_means(cols, 0.0f);
-
-    for (size_t j = 0; j < cols; ++j) {
-        float sum = 0.0f;
-        for (size_t i = 0; i < map.size(); ++i) {
-            sum += map[i][j];
-        }
-        column_means[j] = sum / map.size();
-    }
-
-    return std::distance(column_means.begin(), std::max_element(column_means.begin(), column_means.end()));
+    return result;
 }
 
 static cv::cuda::GpuMat d_gray_previous, d_gray, d_flow;
 
-float MotionDetector::detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_previous, cv::Mat& hsv) {
+float MotionDetector::detectOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_previous, cv::Mat& hsv) {
     cv::Mat flow(gray.size(), CV_32FC2);
     cv::Mat mask, ang, ang_180, mag;
 
     if (use_gpu && cv::cuda::getCudaEnabledDeviceCount() > 0) {
         try {
             cv::cuda::Stream stream;
-            // cv::cuda::GpuMat d_gray_previous(gray_previous);
-            // cv::cuda::GpuMat d_gray(gray);
-            // cv::cuda::GpuMat d_flow;
             d_gray.upload(gray, stream);
             d_gray_previous.upload(gray_previous, stream);
 
@@ -139,13 +97,13 @@ float MotionDetector::detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_
             static auto farneback = cv::cuda::FarnebackOpticalFlow::create(
                 levels, pyr_scale, false, winsize, iterations, poly_n, poly_sigma, 0);
 
-            int64 start_time = cv::getTickCount();
+            // int64 start_time = cv::getTickCount();
 
             farneback->calc(d_gray_previous, d_gray, d_flow, stream);
 
-            int64 end_time = cv::getTickCount();
-            double time_taken_ms = (end_time - start_time) * 1000.0 / cv::getTickFrequency();
-            std::cout << "Difference took " << time_taken_ms << " ms" << std::endl;
+            // int64 end_time = cv::getTickCount();
+            // double time_taken_ms = (end_time - start_time) * 1000.0 / cv::getTickFrequency();
+            // std::cout << "Difference took " << time_taken_ms << " ms" << std::endl;
 
             std::vector<cv::cuda::GpuMat> d_flow_channels(3);
             cv::cuda::split(d_flow, d_flow_channels, stream);
@@ -224,7 +182,7 @@ float MotionDetector::detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_
         move_sense.push_back(ang.at<float>(pt));
     }
 
-    float move_mode = calculateMode(move_sense);
+    float move_mode = MotionUtils::calculateMode(move_sense);
     bool is_moving_up =
         (move_mode >= angle_up_min && move_mode <= angle_up_max ||
         move_mode >= angle_down_min && move_mode <= angle_down_max);
@@ -274,7 +232,7 @@ float MotionDetector::detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_
         }
     }
 
-    roll(directions_map);
+    MotionUtils::roll(directions_map);
 
     if (hsv.empty() || hsv.type() != CV_8UC3) {
         hsv = cv::Mat(frame.size(), CV_8UC3, cv::Scalar(0, 255, 0));
@@ -302,6 +260,10 @@ float MotionDetector::detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_
     return move_mode;
 }
 
+float MotionDetector::detectYOLOMotion() {
+
+}
+
 void MotionDetector::processFrame(cv::Mat& frame, cv::Mat& orig_frame, cv::Mat& gray_previous) {
     frame = frame(cv::Range(mask_x_min, mask_x_max), cv::Range(mask_y_min, mask_y_max));
 
@@ -316,7 +278,7 @@ void MotionDetector::processFrame(cv::Mat& frame, cv::Mat& orig_frame, cv::Mat& 
 
     float move_mode = detectMotion(frame, gray, gray_previous, hsv);
 
-    int loc = calculateMaxMeanColumn(directions_map);
+    int loc = MotionUtils::calculateMaxMeanColumn(directions_map);
 
     std::string text;
     if (loc == 0) {

@@ -6,7 +6,10 @@
 #include <string>
 #include <vector>
 
+#include "../utils/algorithm.h"
 #include "../thread-pool/thread_pool.h"
+
+
 
 class MotionDetector {
 public:
@@ -39,6 +42,7 @@ private:
     bool use_gpu;
     bool use_multi_thread;
     int thread_amount;
+    Algorithm algorithm;
 
     const std::string WINDOW_NAME = "window";
 
@@ -48,11 +52,10 @@ private:
     std::unique_ptr<ThreadPool> thread_pool;
 
     void loadConfig(const std::string& configFile);
-    float calculateMode(const std::vector<float>& values);
-    void roll(std::vector<std::vector<int>>& map);
-    int calculateMaxMeanColumn(const std::vector<std::vector<int>>& map);
     void processFrame(cv::Mat& frame, cv::Mat& orig_frame, cv::Mat& gray_previous);
     float detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_previous, cv::Mat& hsv);
+    float detectOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_previous, cv::Mat& hsv);
+    float detectYOLOMotion();
 };
 
 #endif //MOTION_DETECTOR_H

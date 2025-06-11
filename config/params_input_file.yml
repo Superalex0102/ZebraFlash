@@ -30,4 +30,5 @@
   use_gpu: true,            # GPU acceleration is being used
   use_multi_thread: false,            # Multi thread is being used
   thread_amount: -1,            # number of threads used for multi threading tasks, -1 for auto
+  algorithm: "OPTICAL"            # the algorithm used for processing the images. OPTICAL, YOLO
 }
