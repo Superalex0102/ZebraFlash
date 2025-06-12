@@ -3,10 +3,10 @@
   video_src: "../../input/out2.mp4v",  # Path of the input file.
   res_ratio: 0.14,        # Scale resolution for computing optical flow
   # The image processing area (area of interest) can be defined with the following margins
-  upper_margin: 220,      # MASK_X_MIN
-  bottom_margin: 150,     # MASK_X_MAX
-  left_margin: 370,       # MASK_Y_MIN
-  right_margin: 700,      # MASK_Y_MAX
+  upper_margin: 220,      # MASK_Y_MIN
+  bottom_margin: 150,     # MASK_Y_MAX
+  left_margin: 370,       # MASK_X_MIN
+  right_margin: 700,      # MASK_X_MAX
 
   # Parameters to fine tune optical flow algorithm
   angle_up_min: 215,         # Movement between these two angles should be detected while walking upwards
@@ -26,9 +26,17 @@
   binary_threshold: 150,  # Only take different areas that are different enough (0-255)
   threshold_count: 0,     # minimum number of different pixels from the background model
   seek: 25000,            # video starting position in milliseconds
-  debug: false,            # debug messages and screens displayed
+  debug: true,            # debug messages and screens displayed
   use_gpu: true,            # GPU acceleration is being used
-  use_multi_thread: false,            # Multi thread is being used
+  use_multi_thread: true,            # Multi thread is being used
   thread_amount: -1,            # number of threads used for multi threading tasks, -1 for auto
-  algorithm: "OPTICAL"            # the algorithm used for processing the images. OPTICAL, YOLO
+  algorithm: "YOLO",            # the algorithm used for processing the images. OPTICAL, YOLO
+
+  #YOLO
+  yolo_weights_path: "../../input/yolo/yolov4-tiny.weights",  # or yolov3.weights
+  yolo_config_path: "../../input/yolo/yolov4-tiny.cfg",       # or yolov3.cfg
+  yolo_classes_path: "../../input/yolo/coco.names",
+  yolo_confidence_threshold: 0.5,
+  yolo_nms_threshold: 0.4,
+  yolo_input_size: 416
 }

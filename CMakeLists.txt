@@ -39,8 +39,6 @@ add_executable(ZebraFlash main.cpp
         benchmark/benchmark.cpp
         thread-pool/thread_pool.h
         thread-pool/thread_pool.cpp
-        utils/algorithm.h
-        utils/algorithm.cpp
         utils/motion_utils.cpp
         utils/motion_utils.h)
 

@@ -6,10 +6,7 @@
 #include <string>
 #include <vector>
 
-#include "../utils/algorithm.h"
 #include "../thread-pool/thread_pool.h"
-
-
 
 class MotionDetector {
 public:
@@ -17,13 +14,14 @@ public:
     void run();
 
 private:
+    //config
     std::string video_src;
     int size;
     int seek;
-    int mask_x_min;
-    int mask_x_max;
-    int mask_y_min;
-    int mask_y_max;
+    int row_start;
+    int row_end;
+    int col_start;
+    int col_end;
     double res_ratio;
     double threshold;
     int angle_up_min;
@@ -42,7 +40,13 @@ private:
     bool use_gpu;
     bool use_multi_thread;
     int thread_amount;
-    Algorithm algorithm;
+    std::string algorithm;
+    std::string yolo_weights_path;
+    std::string yolo_config_path;
+    std::string yolo_classes_path;
+    float yolo_confidence_threshold;
+    float yolo_nms_threshold;
+    int yolo_input_size;
 
     const std::string WINDOW_NAME = "window";
 
@@ -51,11 +55,22 @@ private:
 
     std::unique_ptr<ThreadPool> thread_pool;
 
+    //YOLO fields, may need a separate file for YOLO
+    cv::dnn::Net yolo_network;
+    std::vector<std::string> class_names;
+    std::vector<cv::Rect> previous_detections;
+    bool yolo_initialized = false;
+
     void loadConfig(const std::string& configFile);
     void processFrame(cv::Mat& frame, cv::Mat& orig_frame, cv::Mat& gray_previous);
     float detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_previous, cv::Mat& hsv);
     float detectOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_previous, cv::Mat& hsv);
-    float detectYOLOMotion();
+
+    //YOLO methods
+    bool initializeYOLO();
+    float detectYOLOMotion(cv::Mat& frame);
+    float calculateMotionFromDetections(const std::vector<cv::Rect>& current_detections);
+    void updateDirectionsFromYOLO(float motion_magnitude, const std::vector<cv::Rect>& detections);
 };
 
 #endif //MOTION_DETECTOR_H
