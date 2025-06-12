@@ -8,7 +8,8 @@ This guide explains how to build OpenCV from source with CUDA support using Visu
 
 Make sure you have the following software installed:
 
-- **CUDA Toolkit**: 12.4  
+- **CUDA Toolkit**: 12.4
+- **cuDNN**: 9.10.2
 - **Visual Studio**: 2022 (version 17.8 or newer)
 - **CMake**: 3.27 or higher
 
@@ -35,18 +36,13 @@ Open a command prompt and run:
 ```bash
 cmake -G "Visual Studio 17 2022" -A x64 ^
   -DWITH_CUDA=ON ^
+  -DOPENCV_DNN_CUDA=ON ^
+  -DCUDNN_INCLUDE_DIR="C:/Program Files/NVIDIA/CUDNN/v9.10/include/12.9" ^
+  -DCUDNN_LIBRARY="C:/Program Files/NVIDIA/CUDNN/v9.10/lib/12.9/x64/cudnn.lib" ^
   -DBUILD_opencv_python3=OFF ^
   -DCMAKE_BUILD_TYPE=Release ^
   -DOPENCV_EXTRA_MODULES_PATH=C:\Users\Alex\opencv_cuda\opencv_contrib\modules ^
-  -DBUILD_opencv_core=ON ^
-  -DBUILD_opencv_imgproc=ON ^
-  -DBUILD_opencv_video=ON ^
-  -DBUILD_opencv_videoio=ON ^
-  -DBUILD_opencv_highgui=ON ^
-  -DBUILD_opencv_cudaoptflow=ON ^
-  -DBUILD_opencv_cudaarithm=ON ^
   -DWITH_OPENCL=ON ^
-  -DBUILD_opencv_ocl=ON ^
   ..\opencv
 ```
 

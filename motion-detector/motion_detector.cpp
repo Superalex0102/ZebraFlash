@@ -269,11 +269,8 @@ bool MotionDetector::initializeYOLO() {
     try {
         yolo_network = cv::dnn::readNetFromDarknet(yolo_config_path, yolo_weights_path);
 
-        yolo_network.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);
-        yolo_network.setPreferableTarget(cv::dnn::DNN_TARGET_CPU);
-
-        /* TODO: Build OpenCV with DNN CUDA support
          if (use_gpu && cv::cuda::getCudaEnabledDeviceCount() > 0) {
+             std::cout << cv::getBuildInformation() << std::endl;
             yolo_network.setPreferableBackend(cv::dnn::DNN_BACKEND_CUDA);
             yolo_network.setPreferableTarget(cv::dnn::DNN_TARGET_CUDA);
             std::cout << "YOLO using GPU acceleration" << std::endl;
@@ -281,7 +278,7 @@ bool MotionDetector::initializeYOLO() {
             yolo_network.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);
             yolo_network.setPreferableTarget(cv::dnn::DNN_TARGET_CPU);
             std::cout << "YOLO using CPU" << std::endl;
-        }*/
+        }
 
         std::ifstream class_file(yolo_classes_path);
         if (class_file.is_open()) {
@@ -307,13 +304,13 @@ float MotionDetector::detectYOLOMotion(cv::Mat& frame) {
         return -1.0f;
     }
 
-    // int64 start_time = cv::getTickCount();
-
     cv::Mat blob;
     cv::dnn::blobFromImage(frame, blob, 1.0 / 255.0, cv::Size(yolo_input_size, yolo_input_size),
         cv::Scalar(0, 0, 0), true, true, CV_32F);
 
     yolo_network.setInput(blob);
+
+    int64 start_time = cv::getTickCount();
 
     std::vector<cv::Mat> outputs;
     try {
@@ -323,9 +320,9 @@ float MotionDetector::detectYOLOMotion(cv::Mat& frame) {
         return -1.0f;
     }
 
-    // int64 end_time = cv::getTickCount();
-    // double time_taken_ms = (end_time - start_time) * 1000.0 / cv::getTickFrequency();
-    // std::cout << "Difference took " << time_taken_ms << " ms" << std::endl;
+    int64 end_time = cv::getTickCount();
+    double time_taken_ms = (end_time - start_time) * 1000.0 / cv::getTickFrequency();
+    std::cout << "Difference took " << time_taken_ms << " ms" << std::endl;
 
     std::vector<cv::Rect> boxes;
     std::vector<float> confidences;
