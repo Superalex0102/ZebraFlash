@@ -74,8 +74,11 @@ void MotionDetector::loadConfig(const std::string &configFile) {
 
 float MotionDetector::detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_previous, cv::Mat& hsv) {
     float result;
-    if (algorithm == "OPTICAL") {
-        result = detectOpticalFlowMotion(frame, gray, gray_previous, hsv);
+    if (algorithm == "FARNE") {
+        result = detectFarneOpticalFlowMotion(frame, gray, gray_previous, hsv);
+    }
+    else if (algorithm == "LK") {
+        result = detectLKOpticalFlowMotion(frame, gray, gray_previous, hsv);
     }
     else if (algorithm == "YOLO") {
         result = detectYOLOMotion(frame);
@@ -86,7 +89,7 @@ float MotionDetector::detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_
 
 static cv::cuda::GpuMat d_gray_previous, d_gray, d_flow;
 
-float MotionDetector::detectOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_previous, cv::Mat& hsv) {
+float MotionDetector::detectFarneOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_previous, cv::Mat& hsv) {
     cv::Mat flow(gray.size(), CV_32FC2);
     cv::Mat mask, ang, ang_180, mag;
 
@@ -173,6 +176,15 @@ float MotionDetector::detectOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray, cv:
     else {
         cv::calcOpticalFlowFarneback(gray_previous, gray, flow, pyr_scale, levels,
             winsize, iterations, poly_n, poly_sigma, 0);
+
+        //TODO: need to cleanup this code
+        std::vector<cv::Mat> flow_channels(2);
+        cv::split(flow, flow_channels);
+
+        cv::cartToPolar(flow_channels[0], flow_channels[1], mag, ang, true);
+
+        ang_180 = ang / 2;
+        mask = mag > threshold;
     }
 
     std::vector<cv::Point> non_zero_points;
@@ -256,6 +268,159 @@ float MotionDetector::detectOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray, cv:
         cv::merge(hsv_channels, hsv);
     } else {
         std::cerr << "Error: hsv_channels does not have 3 elements!" << std::endl;
+    }
+
+    return move_mode;
+}
+
+float MotionDetector::detectLKOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_previous, cv::Mat& hsv) {
+    std::vector<cv::Point2f> prev_pts, curr_pts;
+    std::vector<uchar> status;
+    std::vector<float> err;
+
+    if (use_gpu && cv::cuda::getCudaEnabledDeviceCount() > 0) {
+        cv::goodFeaturesToTrack(gray_previous, prev_pts, 500, 0.01, 10);
+        if (prev_pts.empty()) return -1.0f;
+
+        cv::cuda::GpuMat d_prev_pts(prev_pts);
+        cv::cuda::GpuMat d_gray_prev(gray_previous);
+        cv::cuda::GpuMat d_gray(gray);
+        cv::cuda::GpuMat d_curr_pts, d_status, d_err;
+
+        auto lk = cv::cuda::SparsePyrLKOpticalFlow::create();
+        lk->calc(d_gray_prev, d_gray, d_prev_pts, d_curr_pts, d_status, d_err);
+
+        cv::Mat h_curr_pts, h_status;
+        d_curr_pts.download(h_curr_pts);
+        d_status.download(h_status);
+
+        curr_pts.resize(prev_pts.size());
+        status.resize(prev_pts.size());
+
+        for (size_t i = 0; i < prev_pts.size(); ++i) {
+            if (h_status.at<uchar>(i)) {
+                curr_pts[i] = h_curr_pts.at<cv::Point2f>(i);
+                status[i] = 1;
+            } else {
+                status[i] = 0;
+            }
+        }
+    } else {
+        cv::goodFeaturesToTrack(gray_previous, prev_pts, 500, 0.01, 10);
+
+        if (prev_pts.empty()) return -1.0f;
+
+        cv::calcOpticalFlowPyrLK(gray_previous, gray, prev_pts, curr_pts, status, err);
+    }
+
+    std::vector<float> move_sense;
+
+    for (size_t i = 0; i < status.size(); ++i) {
+        if (status[i]) {
+            float dx = curr_pts[i].x - prev_pts[i].x;
+            float dy = curr_pts[i].y - prev_pts[i].y;
+            float angle = std::atan2(dy, dx) * 180.0f / CV_PI;
+            if (angle < 0) angle += 360.0f;
+            float magnitude = std::sqrt(dx * dx + dy * dy);
+            if (magnitude > threshold)
+                move_sense.push_back(angle);
+        }
+    }
+
+    if (move_sense.empty()) return -1.0f;
+
+    float move_mode = MotionUtils::calculateMode(move_sense);
+    bool is_moving_up =
+        (move_mode >= angle_up_min && move_mode <= angle_up_max ||
+         move_mode >= angle_down_min && move_mode <= angle_down_max);
+
+    if (debug) {
+        std::cout << "LK Mode: " << move_mode << std::endl;
+    }
+
+    if (is_moving_up) {
+        directions_map[directions_map.size() - 1][0] = 3.5f;
+        directions_map[directions_map.size() - 1][1] = 0;
+        directions_map[directions_map.size() - 1][2] = 0;
+        directions_map[directions_map.size() - 1][3] = 0;
+    }
+    else if (move_mode < angle_up_min || angle_up_max < move_mode ||
+             move_mode < angle_down_min || angle_down_max < move_mode) {
+        directions_map[directions_map.size() - 1][0] = 0;
+        directions_map[directions_map.size() - 1][1] = 1;
+        directions_map[directions_map.size() - 1][2] = 0;
+        directions_map[directions_map.size() - 1][3] = 0;
+    }
+    else {
+        cv::Mat fg_mask;
+        backSub->apply(frame, fg_mask);
+
+        cv::Mat blurred, tresh_frame;
+        cv::GaussianBlur(fg_mask, blurred, cv::Size(7, 7), 0);
+        cv::threshold(blurred, tresh_frame, binary_threshold, 255, cv::THRESH_BINARY);
+
+        if (debug) {
+            cv::imshow("LK threshold frame", tresh_frame);
+        }
+
+        if (cv::countNonZero(tresh_frame) > threshold_count) {
+            directions_map[directions_map.size() - 1][0] = 0;
+            directions_map[directions_map.size() - 1][1] = 0;
+            directions_map[directions_map.size() - 1][2] = 1;
+            directions_map[directions_map.size() - 1][3] = 0;
+        }
+        else {
+            directions_map[directions_map.size() - 1][0] = 0;
+            directions_map[directions_map.size() - 1][1] = 0;
+            directions_map[directions_map.size() - 1][2] = 0;
+            directions_map[directions_map.size() - 1][3] = 1;
+        }
+    }
+
+    MotionUtils::roll(directions_map);
+
+    if (hsv.empty() || hsv.type() != CV_8UC3) {
+        hsv = cv::Mat(frame.size(), CV_8UC3, cv::Scalar(0, 255, 0));
+    }
+
+    std::vector<cv::Mat> hsv_channels;
+    cv::split(hsv, hsv_channels);
+    if (hsv_channels.size() == 3) {
+        cv::Mat ang_map(frame.size(), CV_32F, cv::Scalar(0));
+        for (size_t i = 0; i < prev_pts.size(); ++i) {
+            if (status[i]) {
+                float dx = curr_pts[i].x - prev_pts[i].x;
+                float dy = curr_pts[i].y - prev_pts[i].y;
+                float angle = std::atan2(dy, dx) * 180.0f / CV_PI;
+                if (angle < 0) angle += 360.0f;
+                ang_map.at<float>(prev_pts[i]) = angle / 2;
+            }
+        }
+
+        cv::Mat mag_map(frame.size(), CV_32F, cv::Scalar(0));
+        for (size_t i = 0; i < prev_pts.size(); ++i) {
+            if (status[i]) {
+                float dx = curr_pts[i].x - prev_pts[i].x;
+                float dy = curr_pts[i].y - prev_pts[i].y;
+                float magnitude = std::sqrt(dx * dx + dy * dy);
+                mag_map.at<float>(prev_pts[i]) = magnitude;
+            }
+        }
+
+        ang_map.convertTo(hsv_channels[0], hsv_channels[0].type());
+        cv::normalize(mag_map, hsv_channels[2], 0, 255, cv::NORM_MINMAX, CV_8U);
+        cv::merge(hsv_channels, hsv);
+    }
+
+    if (debug) {
+        cv::Mat output_frame = frame.clone();
+        for (size_t i = 0; i < status.size(); ++i) {
+            if (status[i]) {
+                cv::line(output_frame, prev_pts[i], curr_pts[i], cv::Scalar(0, 255, 0), 2);
+                cv::circle(output_frame, curr_pts[i], 3, cv::Scalar(0, 0, 255), -1);
+            }
+        }
+        cv::imshow("LK Optical Flow", output_frame);
     }
 
     return move_mode;
@@ -497,9 +662,6 @@ void MotionDetector::processFrame(cv::Mat& frame, cv::Mat& orig_frame, cv::Mat& 
     cv::putText(orig_frame, "Angle: " + std::to_string(static_cast<int>(move_mode)),
             cv::Point(30, 150), cv::FONT_HERSHEY_COMPLEX,
             frame.cols / 500.0, cv::Scalar(0, 0, 255), 6);
-
-    cv::putText(frame, text, cv::Point(30, 90), cv::FONT_HERSHEY_COMPLEX,
-    frame.cols / 500.0, cv::Scalar(0, 0, 255), text_thinkness);
 
     cv::putText(orig_frame, text, cv::Point(30, 90), cv::FONT_HERSHEY_COMPLEX,
         orig_frame.cols / 500.0, cv::Scalar(0, 0, 255), text_thinkness);

@@ -64,7 +64,8 @@ private:
     void loadConfig(const std::string& configFile);
     void processFrame(cv::Mat& frame, cv::Mat& orig_frame, cv::Mat& gray_previous);
     float detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_previous, cv::Mat& hsv);
-    float detectOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_previous, cv::Mat& hsv);
+    float detectFarneOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_previous, cv::Mat& hsv);
+    float detectLKOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_previous, cv::Mat& hsv);
 
     //YOLO methods
     bool initializeYOLO();
