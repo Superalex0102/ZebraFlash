@@ -5,9 +5,11 @@
 
 #include "motion_detector.h"
 
+#include <fstream>
 #include <thread>
 
 #include "../benchmark/benchmark.h"
+#include "../utils/motion_utils.h"
 
 MotionDetector::MotionDetector(const std::string &configFile) {
     loadConfig(configFile);
@@ -39,10 +41,10 @@ void MotionDetector::loadConfig(const std::string &configFile) {
     video_src = config["video_src"].as<std::string>();
     size = config["size"].as<int>();
     seek = config["seek"].as<int>();
-    mask_x_min = config["upper_margin"].as<int>();
-    mask_x_max = config["bottom_margin"].as<int>();
-    mask_y_min = config["left_margin"].as<int>();
-    mask_y_max = config["right_margin"].as<int>();
+    row_start = config["upper_margin"].as<int>();
+    row_end = config["bottom_margin"].as<int>();
+    col_start = config["left_margin"].as<int>();
+    col_end = config["right_margin"].as<int>();
     res_ratio = config["res_ratio"].as<double>();
     threshold = config["threshold"].as<double>();
     angle_up_min = config["angle_up_min"].as<int>();
@@ -61,73 +63,39 @@ void MotionDetector::loadConfig(const std::string &configFile) {
     use_gpu = config["use_gpu"].as<bool>();
     use_multi_thread = config["use_multi_thread"].as<bool>();
     thread_amount = config["thread_amount"].as<int>();
+    algorithm = config["algorithm"].as<std::string>();
+    yolo_weights_path = config["yolo_weights_path"].as<std::string>();
+    yolo_config_path = config["yolo_config_path"].as<std::string>();
+    yolo_classes_path = config["yolo_classes_path"].as<std::string>();
+    yolo_confidence_threshold = config["yolo_confidence_threshold"].as<float>();
+    yolo_nms_threshold = config["yolo_nms_threshold"].as<float>();
+    yolo_input_size = config["yolo_input_size"].as<int>();
 }
 
-float MotionDetector::calculateMode(const std::vector<float>& values) {
-    if (values.empty()) {
-        return std::numeric_limits<float>::quiet_NaN();
+float MotionDetector::detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_previous, cv::Mat& hsv) {
+    float result;
+    if (algorithm == "FARNE") {
+        result = detectFarneOpticalFlowMotion(frame, gray, gray_previous, hsv);
+    }
+    else if (algorithm == "LK") {
+        result = detectLKOpticalFlowMotion(frame, gray, gray_previous, hsv);
+    }
+    else if (algorithm == "YOLO") {
+        result = detectYOLOMotion(frame);
     }
 
-    std::unordered_map<float, int> frequency_map;
-    for (const float& value : values) {
-        int binned = static_cast<int>(std::round(value));
-        frequency_map[binned]++;
-    }
-
-    float mode = values[0];
-    int max_count = 0;
-    for (const auto& pair : frequency_map) {
-        if (pair.second > max_count) {
-            mode = pair.first;
-            max_count = pair.second;
-        }
-    }
-    return mode;
-}
-
-void MotionDetector::roll(std::vector<std::vector<int>>& map) {
-    if (map.empty()) {
-        return;
-    }
-
-    std::vector<int> first_row = map[0];
-
-    for (size_t i = 0; i < map.size() - 1; ++i) {
-        map[i] = map[i + 1];
-    }
-
-    map[map.size() - 1] = first_row;
-}
-
-int MotionDetector::calculateMaxMeanColumn(const std::vector<std::vector<int>>& map) {
-    if (map.empty() || map[0].empty()) return -1;
-
-    size_t cols = map[0].size();
-    std::vector<float> column_means(cols, 0.0f);
-
-    for (size_t j = 0; j < cols; ++j) {
-        float sum = 0.0f;
-        for (size_t i = 0; i < map.size(); ++i) {
-            sum += map[i][j];
-        }
-        column_means[j] = sum / map.size();
-    }
-
-    return std::distance(column_means.begin(), std::max_element(column_means.begin(), column_means.end()));
+    return result;
 }
 
 static cv::cuda::GpuMat d_gray_previous, d_gray, d_flow;
 
-float MotionDetector::detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_previous, cv::Mat& hsv) {
+float MotionDetector::detectFarneOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_previous, cv::Mat& hsv) {
     cv::Mat flow(gray.size(), CV_32FC2);
     cv::Mat mask, ang, ang_180, mag;
 
     if (use_gpu && cv::cuda::getCudaEnabledDeviceCount() > 0) {
         try {
             cv::cuda::Stream stream;
-            // cv::cuda::GpuMat d_gray_previous(gray_previous);
-            // cv::cuda::GpuMat d_gray(gray);
-            // cv::cuda::GpuMat d_flow;
             d_gray.upload(gray, stream);
             d_gray_previous.upload(gray_previous, stream);
 
@@ -139,13 +107,7 @@ float MotionDetector::detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_
             static auto farneback = cv::cuda::FarnebackOpticalFlow::create(
                 levels, pyr_scale, false, winsize, iterations, poly_n, poly_sigma, 0);
 
-            int64 start_time = cv::getTickCount();
-
             farneback->calc(d_gray_previous, d_gray, d_flow, stream);
-
-            int64 end_time = cv::getTickCount();
-            double time_taken_ms = (end_time - start_time) * 1000.0 / cv::getTickFrequency();
-            std::cout << "Difference took " << time_taken_ms << " ms" << std::endl;
 
             std::vector<cv::cuda::GpuMat> d_flow_channels(3);
             cv::cuda::split(d_flow, d_flow_channels, stream);
@@ -214,6 +176,15 @@ float MotionDetector::detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_
     else {
         cv::calcOpticalFlowFarneback(gray_previous, gray, flow, pyr_scale, levels,
             winsize, iterations, poly_n, poly_sigma, 0);
+
+        //TODO: need to cleanup this code
+        std::vector<cv::Mat> flow_channels(2);
+        cv::split(flow, flow_channels);
+
+        cv::cartToPolar(flow_channels[0], flow_channels[1], mag, ang, true);
+
+        ang_180 = ang / 2;
+        mask = mag > threshold;
     }
 
     std::vector<cv::Point> non_zero_points;
@@ -224,7 +195,7 @@ float MotionDetector::detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_
         move_sense.push_back(ang.at<float>(pt));
     }
 
-    float move_mode = calculateMode(move_sense);
+    float move_mode = MotionUtils::calculateMode(move_sense);
     bool is_moving_up =
         (move_mode >= angle_up_min && move_mode <= angle_up_max ||
         move_mode >= angle_down_min && move_mode <= angle_down_max);
@@ -274,7 +245,7 @@ float MotionDetector::detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_
         }
     }
 
-    roll(directions_map);
+    MotionUtils::roll(directions_map);
 
     if (hsv.empty() || hsv.type() != CV_8UC3) {
         hsv = cv::Mat(frame.size(), CV_8UC3, cv::Scalar(0, 255, 0));
@@ -302,12 +273,363 @@ float MotionDetector::detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_
     return move_mode;
 }
 
-void MotionDetector::processFrame(cv::Mat& frame, cv::Mat& orig_frame, cv::Mat& gray_previous) {
-    frame = frame(cv::Range(mask_x_min, mask_x_max), cv::Range(mask_y_min, mask_y_max));
+float MotionDetector::detectLKOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_previous, cv::Mat& hsv) {
+    std::vector<cv::Point2f> prev_pts, curr_pts;
+    std::vector<uchar> status;
+    std::vector<float> err;
 
-    cv::Mat frame_resized;
-    cv::Size res(static_cast<int>(frame.cols * res_ratio), static_cast<int>(frame.rows * res_ratio));
-    cv::resize(frame, frame_resized, res, 0, 0, cv::INTER_CUBIC);
+    if (use_gpu && cv::cuda::getCudaEnabledDeviceCount() > 0) {
+        cv::goodFeaturesToTrack(gray_previous, prev_pts, 500, 0.01, 10);
+        if (prev_pts.empty()) return -1.0f;
+
+        cv::cuda::GpuMat d_prev_pts(prev_pts);
+        cv::cuda::GpuMat d_gray_prev(gray_previous);
+        cv::cuda::GpuMat d_gray(gray);
+        cv::cuda::GpuMat d_curr_pts, d_status, d_err;
+
+        auto lk = cv::cuda::SparsePyrLKOpticalFlow::create();
+        lk->calc(d_gray_prev, d_gray, d_prev_pts, d_curr_pts, d_status, d_err);
+
+        cv::Mat h_curr_pts, h_status;
+        d_curr_pts.download(h_curr_pts);
+        d_status.download(h_status);
+
+        curr_pts.resize(prev_pts.size());
+        status.resize(prev_pts.size());
+
+        for (size_t i = 0; i < prev_pts.size(); ++i) {
+            if (h_status.at<uchar>(i)) {
+                curr_pts[i] = h_curr_pts.at<cv::Point2f>(i);
+                status[i] = 1;
+            } else {
+                status[i] = 0;
+            }
+        }
+    } else {
+        cv::goodFeaturesToTrack(gray_previous, prev_pts, 500, 0.01, 10);
+
+        if (prev_pts.empty()) return -1.0f;
+
+        cv::calcOpticalFlowPyrLK(gray_previous, gray, prev_pts, curr_pts, status, err);
+    }
+
+    std::vector<float> move_sense;
+
+    for (size_t i = 0; i < status.size(); ++i) {
+        if (status[i]) {
+            float dx = curr_pts[i].x - prev_pts[i].x;
+            float dy = curr_pts[i].y - prev_pts[i].y;
+            float angle = std::atan2(dy, dx) * 180.0f / CV_PI;
+            if (angle < 0) angle += 360.0f;
+            float magnitude = std::sqrt(dx * dx + dy * dy);
+            if (magnitude > threshold)
+                move_sense.push_back(angle);
+        }
+    }
+
+    if (move_sense.empty()) return -1.0f;
+
+    float move_mode = MotionUtils::calculateMode(move_sense);
+    bool is_moving_up =
+        (move_mode >= angle_up_min && move_mode <= angle_up_max ||
+         move_mode >= angle_down_min && move_mode <= angle_down_max);
+
+    if (debug) {
+        std::cout << "LK Mode: " << move_mode << std::endl;
+    }
+
+    if (is_moving_up) {
+        directions_map[directions_map.size() - 1][0] = 3.5f;
+        directions_map[directions_map.size() - 1][1] = 0;
+        directions_map[directions_map.size() - 1][2] = 0;
+        directions_map[directions_map.size() - 1][3] = 0;
+    }
+    else if (move_mode < angle_up_min || angle_up_max < move_mode ||
+             move_mode < angle_down_min || angle_down_max < move_mode) {
+        directions_map[directions_map.size() - 1][0] = 0;
+        directions_map[directions_map.size() - 1][1] = 1;
+        directions_map[directions_map.size() - 1][2] = 0;
+        directions_map[directions_map.size() - 1][3] = 0;
+    }
+    else {
+        cv::Mat fg_mask;
+        backSub->apply(frame, fg_mask);
+
+        cv::Mat blurred, tresh_frame;
+        cv::GaussianBlur(fg_mask, blurred, cv::Size(7, 7), 0);
+        cv::threshold(blurred, tresh_frame, binary_threshold, 255, cv::THRESH_BINARY);
+
+        if (debug) {
+            cv::imshow("LK threshold frame", tresh_frame);
+        }
+
+        if (cv::countNonZero(tresh_frame) > threshold_count) {
+            directions_map[directions_map.size() - 1][0] = 0;
+            directions_map[directions_map.size() - 1][1] = 0;
+            directions_map[directions_map.size() - 1][2] = 1;
+            directions_map[directions_map.size() - 1][3] = 0;
+        }
+        else {
+            directions_map[directions_map.size() - 1][0] = 0;
+            directions_map[directions_map.size() - 1][1] = 0;
+            directions_map[directions_map.size() - 1][2] = 0;
+            directions_map[directions_map.size() - 1][3] = 1;
+        }
+    }
+
+    MotionUtils::roll(directions_map);
+
+    if (hsv.empty() || hsv.type() != CV_8UC3) {
+        hsv = cv::Mat(frame.size(), CV_8UC3, cv::Scalar(0, 255, 0));
+    }
+
+    std::vector<cv::Mat> hsv_channels;
+    cv::split(hsv, hsv_channels);
+    if (hsv_channels.size() == 3) {
+        cv::Mat ang_map(frame.size(), CV_32F, cv::Scalar(0));
+        for (size_t i = 0; i < prev_pts.size(); ++i) {
+            if (status[i]) {
+                float dx = curr_pts[i].x - prev_pts[i].x;
+                float dy = curr_pts[i].y - prev_pts[i].y;
+                float angle = std::atan2(dy, dx) * 180.0f / CV_PI;
+                if (angle < 0) angle += 360.0f;
+                ang_map.at<float>(prev_pts[i]) = angle / 2;
+            }
+        }
+
+        cv::Mat mag_map(frame.size(), CV_32F, cv::Scalar(0));
+        for (size_t i = 0; i < prev_pts.size(); ++i) {
+            if (status[i]) {
+                float dx = curr_pts[i].x - prev_pts[i].x;
+                float dy = curr_pts[i].y - prev_pts[i].y;
+                float magnitude = std::sqrt(dx * dx + dy * dy);
+                mag_map.at<float>(prev_pts[i]) = magnitude;
+            }
+        }
+
+        ang_map.convertTo(hsv_channels[0], hsv_channels[0].type());
+        cv::normalize(mag_map, hsv_channels[2], 0, 255, cv::NORM_MINMAX, CV_8U);
+        cv::merge(hsv_channels, hsv);
+    }
+
+    if (debug) {
+        cv::Mat output_frame = frame.clone();
+        for (size_t i = 0; i < status.size(); ++i) {
+            if (status[i]) {
+                cv::line(output_frame, prev_pts[i], curr_pts[i], cv::Scalar(0, 255, 0), 2);
+                cv::circle(output_frame, curr_pts[i], 3, cv::Scalar(0, 0, 255), -1);
+            }
+        }
+        cv::imshow("LK Optical Flow", output_frame);
+    }
+
+    return move_mode;
+}
+
+bool MotionDetector::initializeYOLO() {
+    if (yolo_initialized) {
+        return true;
+    }
+
+    try {
+        yolo_network = cv::dnn::readNetFromDarknet(yolo_config_path, yolo_weights_path);
+
+         if (use_gpu && cv::cuda::getCudaEnabledDeviceCount() > 0) {
+             std::cout << cv::getBuildInformation() << std::endl;
+            yolo_network.setPreferableBackend(cv::dnn::DNN_BACKEND_CUDA);
+            yolo_network.setPreferableTarget(cv::dnn::DNN_TARGET_CUDA);
+            std::cout << "YOLO using GPU acceleration" << std::endl;
+        } else {
+            yolo_network.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);
+            yolo_network.setPreferableTarget(cv::dnn::DNN_TARGET_CPU);
+            std::cout << "YOLO using CPU" << std::endl;
+        }
+
+        std::ifstream class_file(yolo_classes_path);
+        if (class_file.is_open()) {
+            std::string line;
+            while (getline(class_file, line)) {
+                class_names.push_back(line);
+            }
+            class_file.close();
+        }
+
+        yolo_initialized = true;
+        std::cout << "YOLO initialized successfully with " << class_names.size() << " classes" << std::endl;
+        return true;
+
+    } catch (const cv::Exception& e) {
+        std::cerr << "Failed to initialize YOLO: " << e.what() << std::endl;
+        return false;
+    }
+}
+
+float MotionDetector::detectYOLOMotion(cv::Mat& frame) {
+    if (!initializeYOLO()) {
+        return -1.0f;
+    }
+
+    cv::Mat blob;
+    cv::dnn::blobFromImage(frame, blob, 1.0 / 255.0, cv::Size(yolo_input_size, yolo_input_size),
+        cv::Scalar(0, 0, 0), true, true, CV_32F);
+
+    yolo_network.setInput(blob);
+
+    int64 start_time = cv::getTickCount();
+
+    std::vector<cv::Mat> outputs;
+    try {
+        yolo_network.forward(outputs, yolo_network.getUnconnectedOutLayersNames());
+    } catch (const cv::Exception& e) {
+        std::cerr << "YOLO forward pass failed: " << e.what() << std::endl;
+        return -1.0f;
+    }
+
+    int64 end_time = cv::getTickCount();
+    double time_taken_ms = (end_time - start_time) * 1000.0 / cv::getTickFrequency();
+    std::cout << "Difference took " << time_taken_ms << " ms" << std::endl;
+
+    std::vector<cv::Rect> boxes;
+    std::vector<float> confidences;
+    std::vector<int> class_ids;
+
+    float scale_x = static_cast<float>(frame.cols) / yolo_input_size;
+    float scale_y = static_cast<float>(frame.rows) / yolo_input_size;
+
+    for (auto& output : outputs) {
+        for (int i = 0; i < output.rows; ++i) {
+            const float* data = output.ptr<float>(i);
+            float confidence = data[4];
+
+            if (confidence >= yolo_confidence_threshold) {
+                cv::Mat scores = output.row(i).colRange(5, output.cols);
+                cv::Point class_id_point;
+                double max_class_score;
+                minMaxLoc(scores, 0, &max_class_score, 0, &class_id_point);
+
+                if (max_class_score > yolo_confidence_threshold) {
+                    int center_x = static_cast<int>(data[0] * scale_x);
+                    int center_y = static_cast<int>(data[1] * scale_y);
+                    int width = static_cast<int>(data[2] * scale_x);
+                    int height = static_cast<int>(data[3] * scale_y);
+                    int left = center_x - width / 2;
+                    int top = center_y - height / 2;
+
+                    boxes.push_back(cv::Rect(left, top, width, height));
+                    confidences.push_back(confidence);
+                    class_ids.push_back(class_id_point.x);
+                }
+            }
+        }
+    }
+
+    std::vector<int> indices;
+    cv::dnn::NMSBoxes(boxes, confidences, yolo_confidence_threshold, yolo_nms_threshold, indices);
+
+    std::vector<cv::Rect> current_detections;
+    for (int idx : indices) {
+        current_detections.push_back(boxes[idx]);
+
+        if (debug) {
+            cv::rectangle(frame, boxes[idx], cv::Scalar(0, 255, 0), 2);
+            std::string label = class_names.size() > class_ids[idx] ?
+                               class_names[class_ids[idx]] : "Unknown";
+            cv::putText(frame, label + " " + std::to_string(confidences[idx]),
+                       cv::Point(boxes[idx].x, boxes[idx].y - 10),
+                       cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 255, 0), 1);
+        }
+    }
+
+    float motion_magnitude = calculateMotionFromDetections(current_detections);
+
+    previous_detections = current_detections;
+
+    updateDirectionsFromYOLO(motion_magnitude, current_detections);
+
+    return motion_magnitude;
+}
+
+float MotionDetector::calculateMotionFromDetections(const std::vector<cv::Rect>& current_detections) {
+    if (previous_detections.empty() || current_detections.empty()) {
+        return 0.0f;
+    }
+
+    float total_motion = 0.0f;
+    int motion_count = 0;
+
+    for (const auto& current_box: current_detections) {
+        cv::Point2f current_center(current_box.x + current_box.width/2.0f,
+            current_box.y + current_box.height/2.0f);
+
+        float min_distance = std::numeric_limits<float>::max();
+        cv::Point2f best_match_center;
+        bool found_match = false;
+
+        for (const auto& prev_box: previous_detections) {
+            cv::Point2f prev_center(prev_box.x + prev_box.width/2.0f,
+                prev_box.y + prev_box.height/2.0f);
+
+            float distance = cv::norm(current_center - prev_center);
+            if (distance < min_distance && distance < 100.0f) { //thresold for matching
+                min_distance = distance;
+                best_match_center = prev_center;
+                found_match = true;
+            }
+        }
+
+        if (found_match) {
+            cv::Point2f motion_vector = current_center - best_match_center;
+            float motion_angle = atan2(motion_vector.y, motion_vector.x) * 180.0f / CV_PI;
+            if (motion_angle < 0) {
+                motion_angle += 360.0f;
+            }
+
+            total_motion += motion_angle;
+            motion_count++;
+        }
+    }
+
+    return motion_count > 0 ? total_motion / motion_count : 0.0f;
+}
+
+void MotionDetector::updateDirectionsFromYOLO(float motion_magnitude, const std::vector<cv::Rect>& detections) {
+    if (detections.empty()) {
+        directions_map[directions_map.size() - 1][0] = 0;
+        directions_map[directions_map.size() - 1][1] = 0;
+        directions_map[directions_map.size() - 1][2] = 0;
+        directions_map[directions_map.size() - 1][3] = 1;
+    } else {
+        if (motion_magnitude >= angle_up_min && motion_magnitude <= angle_up_max) {
+            // Upward motion
+            directions_map[directions_map.size() - 1][0] = 1;
+            directions_map[directions_map.size() - 1][1] = 0;
+            directions_map[directions_map.size() - 1][2] = 0;
+            directions_map[directions_map.size() - 1][3] = 0;
+        } else if (motion_magnitude >= angle_down_min && motion_magnitude <= angle_down_max) {
+            // Downward motion
+            directions_map[directions_map.size() - 1][0] = 1;
+            directions_map[directions_map.size() - 1][1] = 0;
+            directions_map[directions_map.size() - 1][2] = 0;
+            directions_map[directions_map.size() - 1][3] = 0;
+        } else if (motion_magnitude > 5.0f) {
+            // Other directions
+            directions_map[directions_map.size() - 1][0] = 0;
+            directions_map[directions_map.size() - 1][1] = 1;
+            directions_map[directions_map.size() - 1][2] = 0;
+            directions_map[directions_map.size() - 1][3] = 0;
+        } else {
+            directions_map[directions_map.size() - 1][0] = 0;
+            directions_map[directions_map.size() - 1][1] = 0;
+            directions_map[directions_map.size() - 1][2] = 1;
+            directions_map[directions_map.size() - 1][3] = 0;
+        }
+    }
+
+    MotionUtils::roll(directions_map);
+}
+
+void MotionDetector::processFrame(cv::Mat& frame, cv::Mat& orig_frame, cv::Mat& gray_previous) {
+    frame = frame(cv::Range(row_start, row_end), cv::Range(col_start, col_end));
 
     cv::Mat gray;
     cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
@@ -316,7 +638,7 @@ void MotionDetector::processFrame(cv::Mat& frame, cv::Mat& orig_frame, cv::Mat& 
 
     float move_mode = detectMotion(frame, gray, gray_previous, hsv);
 
-    int loc = calculateMaxMeanColumn(directions_map);
+    int loc = MotionUtils::calculateMaxMeanColumn(directions_map);
 
     std::string text;
     if (loc == 0) {
@@ -341,9 +663,6 @@ void MotionDetector::processFrame(cv::Mat& frame, cv::Mat& orig_frame, cv::Mat& 
             cv::Point(30, 150), cv::FONT_HERSHEY_COMPLEX,
             frame.cols / 500.0, cv::Scalar(0, 0, 255), 6);
 
-    cv::putText(frame, text, cv::Point(30, 90), cv::FONT_HERSHEY_COMPLEX,
-    frame.cols / 500.0, cv::Scalar(0, 0, 255), text_thinkness);
-
     cv::putText(orig_frame, text, cv::Point(30, 90), cv::FONT_HERSHEY_COMPLEX,
         orig_frame.cols / 500.0, cv::Scalar(0, 0, 255), text_thinkness);
 
@@ -363,11 +682,11 @@ void MotionDetector::run() {
     std::vector<BenchmarkResult> results;
     int frame_index = 0;
 
-    int h = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_HEIGHT));
-    int w = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_WIDTH));
+    int height = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_HEIGHT));
+    int width = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_WIDTH));
 
-    mask_x_max = h - mask_x_max;
-    mask_y_max = w - mask_y_max;
+    row_end = height - row_end;
+    col_end = width - col_end;
 
     cap.set(cv::CAP_PROP_POS_MSEC, seek);
 
@@ -379,7 +698,7 @@ void MotionDetector::run() {
     }
 
     cv::Mat gray_previous;
-    cv::cvtColor(frame_previous(cv::Range(mask_x_min, mask_x_max), cv::Range(mask_y_min, mask_y_max)),
+    cv::cvtColor(frame_previous(cv::Range(row_start, row_end), cv::Range(col_start, col_end)),
                  gray_previous, cv::COLOR_BGR2GRAY);
 
     cv::Mat frame, orig_frame;
@@ -408,7 +727,7 @@ void MotionDetector::run() {
             elapsed
         });
 
-        cv::rectangle(orig_frame, cv::Point(mask_y_min, mask_x_min), cv::Point(mask_y_max, mask_x_max),
+        cv::rectangle(orig_frame, cv::Point(col_start, row_start), cv::Point(col_end, row_end),
             cv::Scalar(0, 255, 0), 3);
         cv::imshow(WINDOW_NAME, orig_frame);
 
