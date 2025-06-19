@@ -736,7 +736,7 @@ void MotionDetector::run() {
         }
     }
 
-    saveBenchmarkResults(use_gpu, results);
+    saveBenchmarkResults(use_gpu, algorithm, results);
 
     cap.release();
     cv::destroyAllWindows();

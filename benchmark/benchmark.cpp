@@ -67,7 +67,7 @@ std::string getTimestamp() {
     return oss.str();
 }
 
-void saveBenchmarkResults(bool use_gpu, const std::vector<BenchmarkResult>& results) {
+void saveBenchmarkResults(bool use_gpu, const std::string& algorithm, const std::vector<BenchmarkResult>& results) {
     std::string results_dir = "results";
     if (!std::filesystem::exists(results_dir)) {
         if (!std::filesystem::create_directory(results_dir)) {
@@ -77,7 +77,7 @@ void saveBenchmarkResults(bool use_gpu, const std::vector<BenchmarkResult>& resu
     }
 
     std::string timestamp = getTimestamp();
-    std::string filename = results_dir + "/" + (use_gpu ? "gpu" : "cpu") + "_benchmark_" + timestamp + ".csv";
+    std::string filename = results_dir + "/" + (use_gpu ? "gpu" : "cpu") + "_" + algorithm + "_benchmark_" + timestamp + ".csv";
 
     std::cout << "Saving benchmark results to: " << filename << std::endl;
     std::cout << "Current working directory: " << std::filesystem::current_path() << std::endl;
