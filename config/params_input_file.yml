@@ -1,7 +1,7 @@
 {
   # Main parameters
-  video_src: "../../input/out2.mp4v",  # Path of the input file.
-  res_ratio: 0.5,        # Scale resolution for computing optical flow
+  video_src: "../../input/out2.mp4v",  # Path of the input file, use RTSP for real IP camera. e.g: rtsp://localhost:8554/test
+  res_ratio: 0.14,        # Scale resolution for computing optical flow
   # The image processing area (area of interest) can be defined with the following margins
   upper_margin: 220,      # MASK_Y_MIN
   bottom_margin: 150,     # MASK_Y_MAX
