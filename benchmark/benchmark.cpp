@@ -33,11 +33,22 @@ void saveResultToCSV(const std::string& filename, const std::vector<BenchmarkRes
     std::ofstream file(filename);
 
     if (file.is_open()) {
-        file << "Frame Index,Use GPU,Elapsed Time (ms)\n";
+        double total_fps = 0.0;
         for (const auto& r : results) {
+            if (r.process_time_ms > 0.0) {
+                total_fps += 1000.0 / r.process_time_ms;
+            }
+        }
+        double average_fps = results.empty() ? 0.0 : total_fps / results.size();
+
+        file << "Average FPS:," << std::fixed << std::setprecision(3) << average_fps << "\n";
+        file << "Frame Index,Use GPU,FPS\n";
+        for (const auto& r : results) {
+            double fps = (r.process_time_ms > 0.0) ? 1000.0 / r.process_time_ms : 0.0;
+
             file << r.frame_index << ","
                  << (r.use_gpu ? "Yes" : "No") << ","
-                 << std::fixed << std::setprecision(3) << r.process_time_ms << "\n";
+                 << std::fixed << std::setprecision(3) << fps << "\n";
         }
         file.close();
         std::cout << "Results saved to " << filename << std::endl;
