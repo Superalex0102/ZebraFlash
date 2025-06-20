@@ -8,13 +8,7 @@
 
 #include "../thread-pool/thread_pool.h"
 
-class MotionDetector {
-public:
-    MotionDetector(const std::string& configFile);
-    void run();
-
-private:
-    //config
+struct AppConfig {
     std::string video_src;
     int size;
     int seek;
@@ -47,7 +41,17 @@ private:
     float yolo_confidence_threshold;
     float yolo_nms_threshold;
     int yolo_input_size;
+};
 
+class MotionDetector {
+public:
+    MotionDetector(const std::string& configFile);
+    void run();
+
+    AppConfig& getConfig();
+
+private:
+    AppConfig config_;
     const std::string WINDOW_NAME = "window";
 
     std::vector<std::vector<int>> directions_map;
@@ -62,6 +66,7 @@ private:
     bool yolo_initialized = false;
 
     void loadConfig(const std::string& configFile);
+    void initializeParallelProcessing();
     void processFrame(cv::Mat& frame, cv::Mat& orig_frame, cv::Mat& gray_previous);
     float detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_previous, cv::Mat& hsv);
     float detectFarneOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_previous, cv::Mat& hsv);

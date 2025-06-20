@@ -14,12 +14,58 @@
 MotionDetector::MotionDetector(const std::string &configFile) {
     loadConfig(configFile);
 
-    if (use_multi_thread) {
-        thread_amount = thread_amount == -1 ? std::thread::hardware_concurrency() : thread_amount;
-        thread_pool = std::make_unique<ThreadPool>(thread_amount);
+    directions_map.resize(config_.size, std::vector<int>(4, 0));
+    backSub = cv::createBackgroundSubtractorMOG2(500, 16, true);
+}
+
+AppConfig& MotionDetector::getConfig() {
+    return config_;
+}
+
+void MotionDetector::loadConfig(const std::string &configFile) {
+    YAML::Node config = YAML::LoadFile(configFile);
+
+    config_.video_src = config["video_src"].as<std::string>();
+    config_.size = config["size"].as<int>();
+    config_.seek = config["seek"].as<int>();
+    config_.row_start = config["upper_margin"].as<int>();
+    config_.row_end = config["bottom_margin"].as<int>();
+    config_.col_start = config["left_margin"].as<int>();
+    config_.col_end = config["right_margin"].as<int>();
+    config_.res_ratio = config["res_ratio"].as<double>();
+    config_.threshold = config["threshold"].as<double>();
+    config_.angle_up_min = config["angle_up_min"].as<int>();
+    config_.angle_up_max = config["angle_up_max"].as<int>();
+    config_.angle_down_min = config["angle_down_min"].as<int>();
+    config_.angle_down_max = config["angle_down_max"].as<int>();
+    config_.binary_threshold = config["binary_threshold"].as<int>();
+    config_.threshold_count = config["threshold_count"].as<int>();
+    config_.pyr_scale = config["pyr_scale"].as<double>();
+    config_.levels = config["levels"].as<int>();
+    config_.winsize = config["winsize"].as<int>();
+    config_.iterations = config["iterations"].as<int>();
+    config_.poly_n = config["poly_n"].as<int>();
+    config_.poly_sigma = config["poly_sigma"].as<double>();
+    config_.debug = config["debug"].as<bool>();
+    config_.use_gpu = config["use_gpu"].as<bool>();
+    config_.use_multi_thread = config["use_multi_thread"].as<bool>();
+    config_.thread_amount = config["thread_amount"].as<int>();
+    config_.algorithm = config["algorithm"].as<std::string>();
+    config_.yolo_weights_path = config["yolo_weights_path"].as<std::string>();
+    config_.yolo_config_path = config["yolo_config_path"].as<std::string>();
+    config_.yolo_classes_path = config["yolo_classes_path"].as<std::string>();
+    config_.yolo_confidence_threshold = config["yolo_confidence_threshold"].as<float>();
+    config_.yolo_nms_threshold = config["yolo_nms_threshold"].as<float>();
+    config_.yolo_input_size = config["yolo_input_size"].as<int>();
+}
+
+void MotionDetector::initializeParallelProcessing() {
+    if (config_.use_multi_thread) {
+        config_.thread_amount = config_.thread_amount == -1 ? std::thread::hardware_concurrency() : config_.thread_amount;
+        thread_pool = std::make_unique<ThreadPool>(config_.thread_amount);
     }
 
-    if (cv::ocl::haveOpenCL() && use_gpu) {
+    if (cv::ocl::haveOpenCL() && config_.use_gpu) {
         cv::ocl::setUseOpenCL(true);
         if (cv::ocl::useOpenCL()) {
             std::cout << "Using GPU acceleration via OpenCL" << std::endl;
@@ -28,59 +74,19 @@ MotionDetector::MotionDetector(const std::string &configFile) {
         }
     } else {
         cv::ocl::setUseOpenCL(false);
-        std::cout << "GPU acceleration disabled (by confg or unavailable)." << std::endl;
+        std::cout << "GPU acceleration disabled (by config or unavailable)." << std::endl;
     }
-
-    directions_map.resize(size, std::vector<int>(4, 0));
-    backSub = cv::createBackgroundSubtractorMOG2(500, 16, true);
-}
-
-void MotionDetector::loadConfig(const std::string &configFile) {
-    YAML::Node config = YAML::LoadFile(configFile);
-
-    video_src = config["video_src"].as<std::string>();
-    size = config["size"].as<int>();
-    seek = config["seek"].as<int>();
-    row_start = config["upper_margin"].as<int>();
-    row_end = config["bottom_margin"].as<int>();
-    col_start = config["left_margin"].as<int>();
-    col_end = config["right_margin"].as<int>();
-    res_ratio = config["res_ratio"].as<double>();
-    threshold = config["threshold"].as<double>();
-    angle_up_min = config["angle_up_min"].as<int>();
-    angle_up_max = config["angle_up_max"].as<int>();
-    angle_down_min = config["angle_down_min"].as<int>();
-    angle_down_max = config["angle_down_max"].as<int>();
-    binary_threshold = config["binary_threshold"].as<int>();
-    threshold_count = config["threshold_count"].as<int>();
-    pyr_scale = config["pyr_scale"].as<double>();
-    levels = config["levels"].as<int>();
-    winsize = config["winsize"].as<int>();
-    iterations = config["iterations"].as<int>();
-    poly_n = config["poly_n"].as<int>();
-    poly_sigma = config["poly_sigma"].as<double>();
-    debug = config["debug"].as<bool>();
-    use_gpu = config["use_gpu"].as<bool>();
-    use_multi_thread = config["use_multi_thread"].as<bool>();
-    thread_amount = config["thread_amount"].as<int>();
-    algorithm = config["algorithm"].as<std::string>();
-    yolo_weights_path = config["yolo_weights_path"].as<std::string>();
-    yolo_config_path = config["yolo_config_path"].as<std::string>();
-    yolo_classes_path = config["yolo_classes_path"].as<std::string>();
-    yolo_confidence_threshold = config["yolo_confidence_threshold"].as<float>();
-    yolo_nms_threshold = config["yolo_nms_threshold"].as<float>();
-    yolo_input_size = config["yolo_input_size"].as<int>();
 }
 
 float MotionDetector::detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_previous, cv::Mat& hsv) {
     float result;
-    if (algorithm == "FARNE") {
+    if (config_.algorithm == "FARNE") {
         result = detectFarneOpticalFlowMotion(frame, gray, gray_previous, hsv);
     }
-    else if (algorithm == "LK") {
+    else if (config_.algorithm == "LK") {
         result = detectLKOpticalFlowMotion(frame, gray, gray_previous, hsv);
     }
-    else if (algorithm == "YOLO") {
+    else if (config_.algorithm == "YOLO") {
         result = detectYOLOMotion(frame);
     }
 
@@ -93,7 +99,7 @@ float MotionDetector::detectFarneOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray
     cv::Mat flow(gray.size(), CV_32FC2);
     cv::Mat mask, ang, ang_180, mag;
 
-    if (use_gpu && cv::cuda::getCudaEnabledDeviceCount() > 0) {
+    if (config_.use_gpu && cv::cuda::getCudaEnabledDeviceCount() > 0) {
         try {
             cv::cuda::Stream stream;
             d_gray.upload(gray, stream);
@@ -105,7 +111,7 @@ float MotionDetector::detectFarneOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray
             }
 
             static auto farneback = cv::cuda::FarnebackOpticalFlow::create(
-                levels, pyr_scale, false, winsize, iterations, poly_n, poly_sigma, 0);
+                config_.levels, config_.pyr_scale, false, config_.winsize, config_.iterations, config_.poly_n, config_.poly_sigma, 0);
 
             farneback->calc(d_gray_previous, d_gray, d_flow, stream);
 
@@ -119,7 +125,7 @@ float MotionDetector::detectFarneOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray
             cv::cuda::divide(d_ang, cv::Scalar(2.0), d_ang_180);
 
             cv::cuda::GpuMat d_mask;
-            cv::cuda::threshold(d_mag, d_mask, threshold, 255, cv::THRESH_BINARY, stream);
+            cv::cuda::threshold(d_mag, d_mask, config_.threshold, 255, cv::THRESH_BINARY, stream);
 
             d_mask.download(mask, stream);
             d_ang.download(ang, stream);
@@ -132,14 +138,14 @@ float MotionDetector::detectFarneOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray
             return -1.0f;
         }
     }
-    else if (use_multi_thread) {
-        int cols_per_thread = gray.cols / thread_amount;
+    else if (config_.use_multi_thread) {
+        int cols_per_thread = gray.cols / config_.thread_amount;
         std::vector<std::future<void>> futures;
-        std::vector<cv::Mat> flow_parts(thread_amount);
+        std::vector<cv::Mat> flow_parts(config_.thread_amount);
 
-        for (int i = 0; i < thread_amount; i++) {
+        for (int i = 0; i < config_.thread_amount; i++) {
             int start_col = i * cols_per_thread;
-            int end_col = (i == thread_amount - 1) ? gray.cols : (i + 1) * cols_per_thread;
+            int end_col = (i == config_.thread_amount - 1) ? gray.cols : (i + 1) * cols_per_thread;
 
             cv::Range col_range(start_col, end_col);
             cv::Mat gray_section = gray(cv::Range::all(), col_range);
@@ -149,7 +155,7 @@ float MotionDetector::detectFarneOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray
 
             futures.push_back(thread_pool->enqueue([=, &flow_parts]() {
                 cv::calcOpticalFlowFarneback(prev_section, gray_section, flow_parts[i],
-                    pyr_scale, levels, winsize, iterations, poly_n, poly_sigma, 0);
+                    config_.pyr_scale, config_.levels, config_.winsize, config_.iterations, config_.poly_n, config_.poly_sigma, 0);
             }));
         }
 
@@ -157,9 +163,9 @@ float MotionDetector::detectFarneOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray
             future.get();
         }
 
-        for (int i = 0; i < thread_amount; i++) {
+        for (int i = 0; i < config_.thread_amount; i++) {
             int start_col = i * cols_per_thread;
-            int end_col = (i == thread_amount - 1) ? gray.cols : (i + 1) * cols_per_thread;
+            int end_col = (i == config_.thread_amount - 1) ? gray.cols : (i + 1) * cols_per_thread;
 
             cv::Range col_range(start_col, end_col);
             flow_parts[i].copyTo(flow(cv::Range::all(), col_range));
@@ -171,11 +177,11 @@ float MotionDetector::detectFarneOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray
         cv::cartToPolar(flow_channels[0], flow_channels[1], mag, ang, true);
 
         ang_180 = ang / 2;
-        mask = mag > threshold;
+        mask = mag > config_.threshold;
     }
     else {
-        cv::calcOpticalFlowFarneback(gray_previous, gray, flow, pyr_scale, levels,
-            winsize, iterations, poly_n, poly_sigma, 0);
+        cv::calcOpticalFlowFarneback(gray_previous, gray, flow, config_.pyr_scale, config_.levels,
+            config_.winsize, config_.iterations, config_.poly_n, config_.poly_sigma, 0);
 
         //TODO: need to cleanup this code
         std::vector<cv::Mat> flow_channels(2);
@@ -184,7 +190,7 @@ float MotionDetector::detectFarneOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray
         cv::cartToPolar(flow_channels[0], flow_channels[1], mag, ang, true);
 
         ang_180 = ang / 2;
-        mask = mag > threshold;
+        mask = mag > config_.threshold;
     }
 
     std::vector<cv::Point> non_zero_points;
@@ -197,10 +203,10 @@ float MotionDetector::detectFarneOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray
 
     float move_mode = MotionUtils::calculateMode(move_sense);
     bool is_moving_up =
-        (move_mode >= angle_up_min && move_mode <= angle_up_max ||
-        move_mode >= angle_down_min && move_mode <= angle_down_max);
+        (move_mode >= config_.angle_up_min && move_mode <= config_.angle_up_max ||
+        move_mode >= config_.angle_down_min && move_mode <= config_.angle_down_max);
 
-    if (debug) {
+    if (config_.debug) {
         std::cout << move_mode << std::endl;
     }
 
@@ -210,8 +216,8 @@ float MotionDetector::detectFarneOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray
         directions_map[directions_map.size() - 1][2] = 0;
         directions_map[directions_map.size() - 1][3] = 0;
     }
-    else if (move_mode < angle_up_min || angle_up_max < move_mode ||
-        move_mode < angle_down_min || angle_down_max < move_mode) {
+    else if (move_mode < config_.angle_up_min || config_.angle_up_max < move_mode ||
+        move_mode < config_.angle_down_min || config_.angle_down_max < move_mode) {
         directions_map[directions_map.size() - 1][0] = 0;
         directions_map[directions_map.size() - 1][1] = 1;
         directions_map[directions_map.size() - 1][2] = 0;
@@ -225,13 +231,13 @@ float MotionDetector::detectFarneOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray
         cv::GaussianBlur(fg_mask, fg_mask_blurred, cv::Size(7, 7), 0);
 
         cv::Mat tresh_frame;
-        cv::threshold(fg_mask_blurred, tresh_frame, binary_threshold, 255, cv::THRESH_BINARY);
+        cv::threshold(fg_mask_blurred, tresh_frame, config_.binary_threshold, 255, cv::THRESH_BINARY);
 
-        if (debug) {
+        if (config_.debug) {
             cv::imshow("tresh_frame", tresh_frame);
         }
 
-        if (cv::countNonZero(tresh_frame) > threshold_count) {
+        if (cv::countNonZero(tresh_frame) > config_.threshold_count) {
             directions_map[directions_map.size() - 1][0] = 0;
             directions_map[directions_map.size() - 1][1] = 0;
             directions_map[directions_map.size() - 1][2] = 1;
@@ -278,7 +284,7 @@ float MotionDetector::detectLKOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray, c
     std::vector<uchar> status;
     std::vector<float> err;
 
-    if (use_gpu && cv::cuda::getCudaEnabledDeviceCount() > 0) {
+    if (config_.use_gpu && cv::cuda::getCudaEnabledDeviceCount() > 0) {
         cv::goodFeaturesToTrack(gray_previous, prev_pts, 500, 0.01, 10);
         if (prev_pts.empty()) return -1.0f;
 
@@ -322,7 +328,7 @@ float MotionDetector::detectLKOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray, c
             float angle = std::atan2(dy, dx) * 180.0f / CV_PI;
             if (angle < 0) angle += 360.0f;
             float magnitude = std::sqrt(dx * dx + dy * dy);
-            if (magnitude > threshold)
+            if (magnitude > config_.threshold)
                 move_sense.push_back(angle);
         }
     }
@@ -331,10 +337,10 @@ float MotionDetector::detectLKOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray, c
 
     float move_mode = MotionUtils::calculateMode(move_sense);
     bool is_moving_up =
-        (move_mode >= angle_up_min && move_mode <= angle_up_max ||
-         move_mode >= angle_down_min && move_mode <= angle_down_max);
+        (move_mode >= config_.angle_up_min && move_mode <= config_.angle_up_max ||
+         move_mode >= config_.angle_down_min && move_mode <= config_.angle_down_max);
 
-    if (debug) {
+    if (config_.debug) {
         std::cout << "LK Mode: " << move_mode << std::endl;
     }
 
@@ -344,8 +350,8 @@ float MotionDetector::detectLKOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray, c
         directions_map[directions_map.size() - 1][2] = 0;
         directions_map[directions_map.size() - 1][3] = 0;
     }
-    else if (move_mode < angle_up_min || angle_up_max < move_mode ||
-             move_mode < angle_down_min || angle_down_max < move_mode) {
+    else if (move_mode < config_.angle_up_min || config_.angle_up_max < move_mode ||
+             move_mode < config_.angle_down_min || config_.angle_down_max < move_mode) {
         directions_map[directions_map.size() - 1][0] = 0;
         directions_map[directions_map.size() - 1][1] = 1;
         directions_map[directions_map.size() - 1][2] = 0;
@@ -357,13 +363,13 @@ float MotionDetector::detectLKOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray, c
 
         cv::Mat blurred, tresh_frame;
         cv::GaussianBlur(fg_mask, blurred, cv::Size(7, 7), 0);
-        cv::threshold(blurred, tresh_frame, binary_threshold, 255, cv::THRESH_BINARY);
+        cv::threshold(blurred, tresh_frame, config_.binary_threshold, 255, cv::THRESH_BINARY);
 
-        if (debug) {
+        if (config_.debug) {
             cv::imshow("LK threshold frame", tresh_frame);
         }
 
-        if (cv::countNonZero(tresh_frame) > threshold_count) {
+        if (cv::countNonZero(tresh_frame) > config_.threshold_count) {
             directions_map[directions_map.size() - 1][0] = 0;
             directions_map[directions_map.size() - 1][1] = 0;
             directions_map[directions_map.size() - 1][2] = 1;
@@ -412,7 +418,7 @@ float MotionDetector::detectLKOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray, c
         cv::merge(hsv_channels, hsv);
     }
 
-    if (debug) {
+    if (config_.debug) {
         cv::Mat output_frame = frame.clone();
         for (size_t i = 0; i < status.size(); ++i) {
             if (status[i]) {
@@ -432,9 +438,9 @@ bool MotionDetector::initializeYOLO() {
     }
 
     try {
-        yolo_network = cv::dnn::readNetFromDarknet(yolo_config_path, yolo_weights_path);
+        yolo_network = cv::dnn::readNetFromDarknet(config_.yolo_config_path, config_.yolo_weights_path);
 
-         if (use_gpu && cv::cuda::getCudaEnabledDeviceCount() > 0) {
+         if (config_.use_gpu && cv::cuda::getCudaEnabledDeviceCount() > 0) {
              std::cout << cv::getBuildInformation() << std::endl;
             yolo_network.setPreferableBackend(cv::dnn::DNN_BACKEND_CUDA);
             yolo_network.setPreferableTarget(cv::dnn::DNN_TARGET_CUDA);
@@ -445,7 +451,7 @@ bool MotionDetector::initializeYOLO() {
             std::cout << "YOLO using CPU" << std::endl;
         }
 
-        std::ifstream class_file(yolo_classes_path);
+        std::ifstream class_file(config_.yolo_classes_path);
         if (class_file.is_open()) {
             std::string line;
             while (getline(class_file, line)) {
@@ -470,7 +476,7 @@ float MotionDetector::detectYOLOMotion(cv::Mat& frame) {
     }
 
     cv::Mat blob;
-    cv::dnn::blobFromImage(frame, blob, 1.0 / 255.0, cv::Size(yolo_input_size, yolo_input_size),
+    cv::dnn::blobFromImage(frame, blob, 1.0 / 255.0, cv::Size(config_.yolo_input_size, config_.yolo_input_size),
         cv::Scalar(0, 0, 0), true, true, CV_32F);
 
     yolo_network.setInput(blob);
@@ -493,21 +499,21 @@ float MotionDetector::detectYOLOMotion(cv::Mat& frame) {
     std::vector<float> confidences;
     std::vector<int> class_ids;
 
-    float scale_x = static_cast<float>(frame.cols) / yolo_input_size;
-    float scale_y = static_cast<float>(frame.rows) / yolo_input_size;
+    float scale_x = static_cast<float>(frame.cols) / config_.yolo_input_size;
+    float scale_y = static_cast<float>(frame.rows) / config_.yolo_input_size;
 
     for (auto& output : outputs) {
         for (int i = 0; i < output.rows; ++i) {
             const float* data = output.ptr<float>(i);
             float confidence = data[4];
 
-            if (confidence >= yolo_confidence_threshold) {
+            if (confidence >= config_.yolo_confidence_threshold) {
                 cv::Mat scores = output.row(i).colRange(5, output.cols);
                 cv::Point class_id_point;
                 double max_class_score;
                 minMaxLoc(scores, 0, &max_class_score, 0, &class_id_point);
 
-                if (max_class_score > yolo_confidence_threshold) {
+                if (max_class_score > config_.yolo_confidence_threshold) {
                     int center_x = static_cast<int>(data[0] * scale_x);
                     int center_y = static_cast<int>(data[1] * scale_y);
                     int width = static_cast<int>(data[2] * scale_x);
@@ -524,13 +530,13 @@ float MotionDetector::detectYOLOMotion(cv::Mat& frame) {
     }
 
     std::vector<int> indices;
-    cv::dnn::NMSBoxes(boxes, confidences, yolo_confidence_threshold, yolo_nms_threshold, indices);
+    cv::dnn::NMSBoxes(boxes, confidences, config_.yolo_confidence_threshold, config_.yolo_nms_threshold, indices);
 
     std::vector<cv::Rect> current_detections;
     for (int idx : indices) {
         current_detections.push_back(boxes[idx]);
 
-        if (debug) {
+        if (config_.debug) {
             cv::rectangle(frame, boxes[idx], cv::Scalar(0, 255, 0), 2);
             std::string label = class_names.size() > class_ids[idx] ?
                                class_names[class_ids[idx]] : "Unknown";
@@ -599,13 +605,13 @@ void MotionDetector::updateDirectionsFromYOLO(float motion_magnitude, const std:
         directions_map[directions_map.size() - 1][2] = 0;
         directions_map[directions_map.size() - 1][3] = 1;
     } else {
-        if (motion_magnitude >= angle_up_min && motion_magnitude <= angle_up_max) {
+        if (motion_magnitude >= config_.angle_up_min && motion_magnitude <= config_.angle_up_max) {
             // Upward motion
             directions_map[directions_map.size() - 1][0] = 1;
             directions_map[directions_map.size() - 1][1] = 0;
             directions_map[directions_map.size() - 1][2] = 0;
             directions_map[directions_map.size() - 1][3] = 0;
-        } else if (motion_magnitude >= angle_down_min && motion_magnitude <= angle_down_max) {
+        } else if (motion_magnitude >= config_.angle_down_min && motion_magnitude <= config_.angle_down_max) {
             // Downward motion
             directions_map[directions_map.size() - 1][0] = 1;
             directions_map[directions_map.size() - 1][1] = 0;
@@ -629,7 +635,7 @@ void MotionDetector::updateDirectionsFromYOLO(float motion_magnitude, const std:
 }
 
 void MotionDetector::processFrame(cv::Mat& frame, cv::Mat& orig_frame, cv::Mat& gray_previous) {
-    frame = frame(cv::Range(row_start, row_end), cv::Range(col_start, col_end));
+    frame = frame(cv::Range(config_.row_start, config_.row_end), cv::Range(config_.col_start, config_.col_end));
 
     cv::Mat gray;
     cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
@@ -670,11 +676,13 @@ void MotionDetector::processFrame(cv::Mat& frame, cv::Mat& orig_frame, cv::Mat& 
 }
 
 void MotionDetector::run() {
+    initializeParallelProcessing();
+
     cv::namedWindow(WINDOW_NAME, cv::WINDOW_NORMAL);
-    cv::VideoCapture cap(video_src);
+    cv::VideoCapture cap(config_.video_src);
 
     if (!cap.isOpened()) {
-        std::cerr << "Error: Could not open video source: " << video_src << std::endl;
+        std::cerr << "Error: Could not open video source: " << config_.video_src << std::endl;
         return;
     }
 
@@ -685,10 +693,10 @@ void MotionDetector::run() {
     int height = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_HEIGHT));
     int width = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_WIDTH));
 
-    row_end = height - row_end;
-    col_end = width - col_end;
+    config_.row_end = height - config_.row_end;
+    config_.col_end = width - config_.col_end;
 
-    cap.set(cv::CAP_PROP_POS_MSEC, seek);
+    cap.set(cv::CAP_PROP_POS_MSEC, config_.seek);
 
     cv::Mat frame_previous;
     cap >> frame_previous;
@@ -698,7 +706,7 @@ void MotionDetector::run() {
     }
 
     cv::Mat gray_previous;
-    cv::cvtColor(frame_previous(cv::Range(row_start, row_end), cv::Range(col_start, col_end)),
+    cv::cvtColor(frame_previous(cv::Range(config_.row_start, config_.row_end), cv::Range(config_.col_start, config_.col_end)),
                  gray_previous, cv::COLOR_BGR2GRAY);
 
     cv::Mat frame, orig_frame;
@@ -723,11 +731,11 @@ void MotionDetector::run() {
 
         results.push_back({
             frame_index++,
-            use_gpu,
+            config_.use_gpu,
             elapsed
         });
 
-        cv::rectangle(orig_frame, cv::Point(col_start, row_start), cv::Point(col_end, row_end),
+        cv::rectangle(orig_frame, cv::Point(config_.col_start, config_.row_start), cv::Point(config_.col_end, config_.row_end),
             cv::Scalar(0, 255, 0), 3);
         cv::imshow(WINDOW_NAME, orig_frame);
 
@@ -736,7 +744,7 @@ void MotionDetector::run() {
         }
     }
 
-    saveBenchmarkResults(use_gpu, algorithm, results);
+    saveBenchmarkResults(config_.use_gpu, config_.algorithm, results);
 
     cap.release();
     cv::destroyAllWindows();
