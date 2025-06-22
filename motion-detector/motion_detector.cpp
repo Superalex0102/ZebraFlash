@@ -142,8 +142,36 @@ float MotionDetector::detectFarneOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray
             return -1.0f;
         }
 #endif
-    }
-    else if (config_.use_multi_thread) {
+    } else if (config_.use_gpu && cv::ocl::haveOpenCL()) {
+        try {
+            cv::UMat u_gray_previous, u_gray, u_flow;
+            cv::calcOpticalFlowFarneback(gray_previous, gray, flow, config_.pyr_scale,
+                config_.levels, config_.winsize, config_.iterations,
+                config_.poly_n, config_.poly_sigma, 0);
+
+            flow.copyTo(u_flow);
+
+            std::vector<cv::UMat> u_flow_channels(2);
+            cv::split(u_flow, u_flow_channels);
+
+            cv::UMat u_mag, u_ang;
+            cv::cartToPolar(u_flow_channels[0], u_flow_channels[1], u_mag, u_ang, true);
+
+            cv::UMat u_ang_180;
+            cv::divide(u_ang, cv::Scalar(2.0), u_ang_180);
+
+            cv::UMat u_mask;
+            cv::threshold(u_mag, u_mask, config_.threshold, 255, cv::THRESH_BINARY);
+
+            u_mask.copyTo(mask);
+            u_ang.copyTo(ang);
+            u_ang_180.copyTo(ang_180);
+            u_mag.copyTo(mag);
+        } catch (const cv::Exception& e) {
+            std::cerr << "OpenCL post-processing failed: " << e.what() << std::endl;
+            return -1.0f;
+        }
+    } else if (config_.use_multi_thread) {
         int cols_per_thread = gray.cols / config_.thread_amount;
         std::vector<std::future<void>> futures;
         std::vector<cv::Mat> flow_parts(config_.thread_amount);
@@ -318,10 +346,24 @@ float MotionDetector::detectLKOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray, c
             }
         }
 #endif
+    } else if (config_.use_gpu && cv::ocl::haveOpenCL()) {
+        cv::UMat u_gray_previous, u_gray;
+
+        gray_previous.copyTo(u_gray_previous);
+        gray.copyTo(u_gray);
+
+        cv::goodFeaturesToTrack(u_gray_previous, prev_pts, 500, 0.01, 10);
+
+        if (prev_pts.empty()) {
+            return -1.0f;
+        }
+        cv::calcOpticalFlowPyrLK(u_gray_previous, u_gray, prev_pts, curr_pts, status, err);
     } else {
         cv::goodFeaturesToTrack(gray_previous, prev_pts, 500, 0.01, 10);
 
-        if (prev_pts.empty()) return -1.0f;
+        if (prev_pts.empty()) {
+            return -1.0f;
+        }
 
         cv::calcOpticalFlowPyrLK(gray_previous, gray, prev_pts, curr_pts, status, err);
     }
@@ -443,16 +485,18 @@ bool MotionDetector::initializeYOLO() {
     if (yolo_initialized) {
         return true;
     }
-
     try {
         yolo_network = cv::dnn::readNetFromDarknet(config_.yolo_config_path, config_.yolo_weights_path);
 
          if (config_.use_gpu && cv::cuda::getCudaEnabledDeviceCount() > 0) {
-             std::cout << cv::getBuildInformation() << std::endl;
             yolo_network.setPreferableBackend(cv::dnn::DNN_BACKEND_CUDA);
             yolo_network.setPreferableTarget(cv::dnn::DNN_TARGET_CUDA);
             std::cout << "YOLO using GPU acceleration" << std::endl;
-        } else {
+         } else if (config_.use_gpu && cv::ocl::haveOpenCL()) {
+             yolo_network.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);
+             yolo_network.setPreferableTarget(cv::dnn::DNN_TARGET_OPENCL);
+             std::cout << "YOLO using OpenCL GPU acceleration" << std::endl;
+         } else {
             yolo_network.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);
             yolo_network.setPreferableTarget(cv::dnn::DNN_TARGET_CPU);
             std::cout << "YOLO using CPU" << std::endl;
