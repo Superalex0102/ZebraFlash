@@ -1,7 +1,10 @@
 #include <iostream>
 #include <opencv2/core/ocl.hpp>
+
+#ifdef HAVE_CUDA
 #include <opencv2/cudaoptflow.hpp>
 #include <opencv2/cudaarithm.hpp>
+#endif
 
 #include "motion_detector.h"
 
@@ -100,6 +103,7 @@ float MotionDetector::detectFarneOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray
     cv::Mat mask, ang, ang_180, mag;
 
     if (config_.use_gpu && cv::cuda::getCudaEnabledDeviceCount() > 0) {
+#ifdef HAVE_CUDA
         try {
             cv::cuda::Stream stream;
             d_gray.upload(gray, stream);
@@ -137,6 +141,7 @@ float MotionDetector::detectFarneOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray
             std::cerr << "CUDA Optical Flow failed: " << e.what() << std::endl;
             return -1.0f;
         }
+#endif
     }
     else if (config_.use_multi_thread) {
         int cols_per_thread = gray.cols / config_.thread_amount;
@@ -285,6 +290,7 @@ float MotionDetector::detectLKOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray, c
     std::vector<float> err;
 
     if (config_.use_gpu && cv::cuda::getCudaEnabledDeviceCount() > 0) {
+#ifdef HAVE_CUDA
         cv::goodFeaturesToTrack(gray_previous, prev_pts, 500, 0.01, 10);
         if (prev_pts.empty()) return -1.0f;
 
@@ -311,6 +317,7 @@ float MotionDetector::detectLKOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray, c
                 status[i] = 0;
             }
         }
+#endif
     } else {
         cv::goodFeaturesToTrack(gray_previous, prev_pts, 500, 0.01, 10);
 
