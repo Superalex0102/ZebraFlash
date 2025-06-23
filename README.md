@@ -55,3 +55,5 @@ The build should take around 90-120 minutes to complete and it should take up ar
 After the build completes, the generated binaries will be located in the `bin\Release` directory.
 
 Don't forget to setup OpenCV environments to the `bin\Release` folder.
+
+If using **CUDA**, don't forget to add `-DCMAKE_CXX_FLAGS="-DHAVE_CUDA"` flag to the cmake command.
