@@ -2,6 +2,10 @@
 
 #include "motion_utils.h"
 
+#include <algorithm>
+#include <cmath>
+#include <limits>
+
 float MotionUtils::calculateMode(const std::vector<float>& values) {
     if (values.empty()) {
         return std::numeric_limits<float>::quiet_NaN();
