@@ -1,7 +1,10 @@
 #include <iostream>
 #include <opencv2/core/ocl.hpp>
+
+#ifdef HAVE_CUDA
 #include <opencv2/cudaoptflow.hpp>
 #include <opencv2/cudaarithm.hpp>
+#endif
 
 #include "motion_detector.h"
 
@@ -100,6 +103,7 @@ float MotionDetector::detectFarneOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray
     cv::Mat mask, ang, ang_180, mag;
 
     if (config_.use_gpu && cv::cuda::getCudaEnabledDeviceCount() > 0) {
+#ifdef HAVE_CUDA
         try {
             cv::cuda::Stream stream;
             d_gray.upload(gray, stream);
@@ -137,8 +141,37 @@ float MotionDetector::detectFarneOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray
             std::cerr << "CUDA Optical Flow failed: " << e.what() << std::endl;
             return -1.0f;
         }
-    }
-    else if (config_.use_multi_thread) {
+#endif
+    } else if (config_.use_gpu && cv::ocl::haveOpenCL()) {
+        try {
+            cv::UMat u_gray_previous, u_gray, u_flow;
+            cv::calcOpticalFlowFarneback(gray_previous, gray, flow, config_.pyr_scale,
+                config_.levels, config_.winsize, config_.iterations,
+                config_.poly_n, config_.poly_sigma, 0);
+
+            flow.copyTo(u_flow);
+
+            std::vector<cv::UMat> u_flow_channels(2);
+            cv::split(u_flow, u_flow_channels);
+
+            cv::UMat u_mag, u_ang;
+            cv::cartToPolar(u_flow_channels[0], u_flow_channels[1], u_mag, u_ang, true);
+
+            cv::UMat u_ang_180;
+            cv::divide(u_ang, cv::Scalar(2.0), u_ang_180);
+
+            cv::UMat u_mask;
+            cv::threshold(u_mag, u_mask, config_.threshold, 255, cv::THRESH_BINARY);
+
+            u_mask.copyTo(mask);
+            u_ang.copyTo(ang);
+            u_ang_180.copyTo(ang_180);
+            u_mag.copyTo(mag);
+        } catch (const cv::Exception& e) {
+            std::cerr << "OpenCL post-processing failed: " << e.what() << std::endl;
+            return -1.0f;
+        }
+    } else if (config_.use_multi_thread) {
         int cols_per_thread = gray.cols / config_.thread_amount;
         std::vector<std::future<void>> futures;
         std::vector<cv::Mat> flow_parts(config_.thread_amount);
@@ -285,6 +318,7 @@ float MotionDetector::detectLKOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray, c
     std::vector<float> err;
 
     if (config_.use_gpu && cv::cuda::getCudaEnabledDeviceCount() > 0) {
+#ifdef HAVE_CUDA
         cv::goodFeaturesToTrack(gray_previous, prev_pts, 500, 0.01, 10);
         if (prev_pts.empty()) return -1.0f;
 
@@ -311,10 +345,25 @@ float MotionDetector::detectLKOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray, c
                 status[i] = 0;
             }
         }
+#endif
+    } else if (config_.use_gpu && cv::ocl::haveOpenCL()) {
+        cv::UMat u_gray_previous, u_gray;
+
+        gray_previous.copyTo(u_gray_previous);
+        gray.copyTo(u_gray);
+
+        cv::goodFeaturesToTrack(u_gray_previous, prev_pts, 500, 0.01, 10);
+
+        if (prev_pts.empty()) {
+            return -1.0f;
+        }
+        cv::calcOpticalFlowPyrLK(u_gray_previous, u_gray, prev_pts, curr_pts, status, err);
     } else {
         cv::goodFeaturesToTrack(gray_previous, prev_pts, 500, 0.01, 10);
 
-        if (prev_pts.empty()) return -1.0f;
+        if (prev_pts.empty()) {
+            return -1.0f;
+        }
 
         cv::calcOpticalFlowPyrLK(gray_previous, gray, prev_pts, curr_pts, status, err);
     }
@@ -436,16 +485,18 @@ bool MotionDetector::initializeYOLO() {
     if (yolo_initialized) {
         return true;
     }
-
     try {
         yolo_network = cv::dnn::readNetFromDarknet(config_.yolo_config_path, config_.yolo_weights_path);
 
          if (config_.use_gpu && cv::cuda::getCudaEnabledDeviceCount() > 0) {
-             std::cout << cv::getBuildInformation() << std::endl;
             yolo_network.setPreferableBackend(cv::dnn::DNN_BACKEND_CUDA);
             yolo_network.setPreferableTarget(cv::dnn::DNN_TARGET_CUDA);
             std::cout << "YOLO using GPU acceleration" << std::endl;
-        } else {
+         } else if (config_.use_gpu && cv::ocl::haveOpenCL()) {
+             yolo_network.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);
+             yolo_network.setPreferableTarget(cv::dnn::DNN_TARGET_OPENCL);
+             std::cout << "YOLO using OpenCL GPU acceleration" << std::endl;
+         } else {
             yolo_network.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);
             yolo_network.setPreferableTarget(cv::dnn::DNN_TARGET_CPU);
             std::cout << "YOLO using CPU" << std::endl;
@@ -481,7 +532,7 @@ float MotionDetector::detectYOLOMotion(cv::Mat& frame) {
 
     yolo_network.setInput(blob);
 
-    int64 start_time = cv::getTickCount();
+    // int64 start_time = cv::getTickCount();
 
     std::vector<cv::Mat> outputs;
     try {
@@ -491,9 +542,9 @@ float MotionDetector::detectYOLOMotion(cv::Mat& frame) {
         return -1.0f;
     }
 
-    int64 end_time = cv::getTickCount();
-    double time_taken_ms = (end_time - start_time) * 1000.0 / cv::getTickFrequency();
-    std::cout << "Difference took " << time_taken_ms << " ms" << std::endl;
+    // int64 end_time = cv::getTickCount();
+    // double time_taken_ms = (end_time - start_time) * 1000.0 / cv::getTickFrequency();
+    // std::cout << "Difference took " << time_taken_ms << " ms" << std::endl;
 
     std::vector<cv::Rect> boxes;
     std::vector<float> confidences;
@@ -560,20 +611,19 @@ float MotionDetector::calculateMotionFromDetections(const std::vector<cv::Rect>&
         return 0.0f;
     }
 
-    float total_motion = 0.0f;
-    int motion_count = 0;
+    std::vector<float> motion_angles;
 
     for (const auto& current_box: current_detections) {
-        cv::Point2f current_center(current_box.x + current_box.width/2.0f,
-            current_box.y + current_box.height/2.0f);
+        cv::Point2f current_center(current_box.x + current_box.width / 2.0f,
+            current_box.y + current_box.height / 2.0f);
 
         float min_distance = std::numeric_limits<float>::max();
         cv::Point2f best_match_center;
         bool found_match = false;
 
         for (const auto& prev_box: previous_detections) {
-            cv::Point2f prev_center(prev_box.x + prev_box.width/2.0f,
-                prev_box.y + prev_box.height/2.0f);
+            cv::Point2f prev_center(prev_box.x + prev_box.width / 2.0f,
+                prev_box.y + prev_box.height / 2.0f);
 
             float distance = cv::norm(current_center - prev_center);
             if (distance < min_distance && distance < 100.0f) { //thresold for matching
@@ -583,19 +633,18 @@ float MotionDetector::calculateMotionFromDetections(const std::vector<cv::Rect>&
             }
         }
 
+        //TODO: better angle detection and calculation
         if (found_match) {
             cv::Point2f motion_vector = current_center - best_match_center;
             float motion_angle = atan2(motion_vector.y, motion_vector.x) * 180.0f / CV_PI;
             if (motion_angle < 0) {
                 motion_angle += 360.0f;
             }
-
-            total_motion += motion_angle;
-            motion_count++;
+            motion_angles.push_back(motion_angle);
         }
     }
 
-    return motion_count > 0 ? total_motion / motion_count : 0.0f;
+    return MotionUtils::calculateMode(motion_angles);
 }
 
 void MotionDetector::updateDirectionsFromYOLO(float motion_magnitude, const std::vector<cv::Rect>& detections) {
