@@ -532,7 +532,7 @@ float MotionDetector::detectYOLOMotion(cv::Mat& frame) {
 
     yolo_network.setInput(blob);
 
-    int64 start_time = cv::getTickCount();
+    // int64 start_time = cv::getTickCount();
 
     std::vector<cv::Mat> outputs;
     try {
@@ -542,9 +542,9 @@ float MotionDetector::detectYOLOMotion(cv::Mat& frame) {
         return -1.0f;
     }
 
-    int64 end_time = cv::getTickCount();
-    double time_taken_ms = (end_time - start_time) * 1000.0 / cv::getTickFrequency();
-    std::cout << "Difference took " << time_taken_ms << " ms" << std::endl;
+    // int64 end_time = cv::getTickCount();
+    // double time_taken_ms = (end_time - start_time) * 1000.0 / cv::getTickFrequency();
+    // std::cout << "Difference took " << time_taken_ms << " ms" << std::endl;
 
     std::vector<cv::Rect> boxes;
     std::vector<float> confidences;
@@ -611,20 +611,19 @@ float MotionDetector::calculateMotionFromDetections(const std::vector<cv::Rect>&
         return 0.0f;
     }
 
-    float total_motion = 0.0f;
-    int motion_count = 0;
+    std::vector<float> motion_angles;
 
     for (const auto& current_box: current_detections) {
-        cv::Point2f current_center(current_box.x + current_box.width/2.0f,
-            current_box.y + current_box.height/2.0f);
+        cv::Point2f current_center(current_box.x + current_box.width / 2.0f,
+            current_box.y + current_box.height / 2.0f);
 
         float min_distance = std::numeric_limits<float>::max();
         cv::Point2f best_match_center;
         bool found_match = false;
 
         for (const auto& prev_box: previous_detections) {
-            cv::Point2f prev_center(prev_box.x + prev_box.width/2.0f,
-                prev_box.y + prev_box.height/2.0f);
+            cv::Point2f prev_center(prev_box.x + prev_box.width / 2.0f,
+                prev_box.y + prev_box.height / 2.0f);
 
             float distance = cv::norm(current_center - prev_center);
             if (distance < min_distance && distance < 100.0f) { //thresold for matching
@@ -634,19 +633,18 @@ float MotionDetector::calculateMotionFromDetections(const std::vector<cv::Rect>&
             }
         }
 
+        //TODO: better angle detection and calculation
         if (found_match) {
             cv::Point2f motion_vector = current_center - best_match_center;
             float motion_angle = atan2(motion_vector.y, motion_vector.x) * 180.0f / CV_PI;
             if (motion_angle < 0) {
                 motion_angle += 360.0f;
             }
-
-            total_motion += motion_angle;
-            motion_count++;
+            motion_angles.push_back(motion_angle);
         }
     }
 
-    return motion_count > 0 ? total_motion / motion_count : 0.0f;
+    return MotionUtils::calculateMode(motion_angles);
 }
 
 void MotionDetector::updateDirectionsFromYOLO(float motion_magnitude, const std::vector<cv::Rect>& detections) {
