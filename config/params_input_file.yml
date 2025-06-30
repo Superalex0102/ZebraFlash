@@ -8,17 +8,23 @@
   left_margin: 370,       # MASK_X_MIN
   right_margin: 700,      # MASK_X_MAX
 
-  # Parameters to fine tune optical flow algorithm
   angle_up_min: 215,         # Movement between these two angles should be detected while walking upwards
   angle_up_max: 315,         # Movement between these two angles should be detected while walking upwards
   angle_down_min: 40,         # Movement between these two angles should be detected while walking downwards
   angle_down_max: 150,         # Movement between these two angles should be detected while walking downwards
+
+  # Parameters to fine tune Farnebäck algorithm
   pyr_scale: 0.5,         # Image scale (<1) to build pyramids for each image
   levels: 1,              # Number of pyramid layers
   winsize: 25,            # Averaging window size
   iterations: 1,          # Number of iterations the algorithm does at each pyramid level
   poly_n: 5,              # Size of the pixel neighborhood used to find polynomial expansion in each pixel
   poly_sigma: 1.1,        # Standard deviation of the Gaussian that is used to smooth derivatives used as a basis for the polynomial expansion
+
+  # Parameters to fine tune Lucas-Kanade algorithm
+  max_corners: 200,
+  quality_level: 0.001,
+  min_distance: 10,
 
   # Other parameters
   threshold: 2.5,         # Threshold value for magnitude

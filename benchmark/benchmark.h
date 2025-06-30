@@ -21,7 +21,7 @@ struct BenchmarkResult {
     int frame_index;
     bool use_gpu;
     double process_time_ms;
-    std::string algorithm;
+    bool crossing_intent;
 };
 
 std::string getTimestamp();

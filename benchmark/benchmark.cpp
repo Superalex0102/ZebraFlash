@@ -34,14 +34,20 @@ void saveResultToCSV(const std::string& filename, const std::vector<BenchmarkRes
 
     if (file.is_open()) {
         double total_fps = 0.0;
+        double crossing_intent = 0;
         for (const auto& r : results) {
             if (r.process_time_ms > 0.0) {
                 total_fps += 1000.0 / r.process_time_ms;
             }
+            if (r.crossing_intent) {
+                ++crossing_intent;
+            }
         }
         double average_fps = results.empty() ? 0.0 : total_fps / results.size();
+        double crossing_intent_rate = results.empty() ? 0.0 : crossing_intent / results.size();
 
         file << "Average FPS:," << std::fixed << std::setprecision(3) << average_fps << "\n";
+        file << "Crossing Intent Rate:," << crossing_intent_rate << "\n";
         file << "Frame Index,Use GPU,FPS\n";
         for (const auto& r : results) {
             double fps = (r.process_time_ms > 0.0) ? 1000.0 / r.process_time_ms : 0.0;

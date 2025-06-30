@@ -35,12 +35,12 @@ void MotionDetector::loadConfig(const std::string &configFile) {
     config_.row_end = config["bottom_margin"].as<int>();
     config_.col_start = config["left_margin"].as<int>();
     config_.col_end = config["right_margin"].as<int>();
-    config_.res_ratio = config["res_ratio"].as<double>();
-    config_.threshold = config["threshold"].as<double>();
     config_.angle_up_min = config["angle_up_min"].as<int>();
     config_.angle_up_max = config["angle_up_max"].as<int>();
     config_.angle_down_min = config["angle_down_min"].as<int>();
     config_.angle_down_max = config["angle_down_max"].as<int>();
+    config_.res_ratio = config["res_ratio"].as<double>();
+    config_.threshold = config["threshold"].as<double>();
     config_.binary_threshold = config["binary_threshold"].as<int>();
     config_.threshold_count = config["threshold_count"].as<int>();
     config_.pyr_scale = config["pyr_scale"].as<double>();
@@ -49,6 +49,9 @@ void MotionDetector::loadConfig(const std::string &configFile) {
     config_.iterations = config["iterations"].as<int>();
     config_.poly_n = config["poly_n"].as<int>();
     config_.poly_sigma = config["poly_sigma"].as<double>();
+    config_.max_corners = config["max_corners"].as<int>();
+    config_.quality_level = config["quality_level"].as<double>();
+    config_.min_distance = config["min_distance"].as<int>();
     config_.debug = config["debug"].as<bool>();
     config_.use_gpu = config["use_gpu"].as<bool>();
     config_.use_multi_thread = config["use_multi_thread"].as<bool>();
@@ -319,8 +322,16 @@ float MotionDetector::detectLKOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray, c
 
     if (config_.use_gpu && cv::cuda::getCudaEnabledDeviceCount() > 0) {
 #ifdef HAVE_CUDA
-        cv::goodFeaturesToTrack(gray_previous, prev_pts, 500, 0.01, 10);
-        if (prev_pts.empty()) return -1.0f;
+        cv::goodFeaturesToTrack(gray_previous, prev_pts, config_.max_corners, config_.quality_level, config_.min_distance);
+        if (prev_pts.empty()) {
+            // No features to track - set to WAITING status
+            directions_map[directions_map.size() - 1][0] = 0;
+            directions_map[directions_map.size() - 1][1] = 0;
+            directions_map[directions_map.size() - 1][2] = 0;
+            directions_map[directions_map.size() - 1][3] = 1;
+            MotionUtils::roll(directions_map);
+            return -1.0f;
+        }
 
         cv::cuda::GpuMat d_prev_pts(prev_pts);
         cv::cuda::GpuMat d_gray_prev(gray_previous);
@@ -352,16 +363,28 @@ float MotionDetector::detectLKOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray, c
         gray_previous.copyTo(u_gray_previous);
         gray.copyTo(u_gray);
 
-        cv::goodFeaturesToTrack(u_gray_previous, prev_pts, 500, 0.01, 10);
+        cv::goodFeaturesToTrack(u_gray_previous, prev_pts, config_.max_corners, config_.quality_level, config_.min_distance);
 
         if (prev_pts.empty()) {
+            // No features to track - set to WAITING status
+            directions_map[directions_map.size() - 1][0] = 0;
+            directions_map[directions_map.size() - 1][1] = 0;
+            directions_map[directions_map.size() - 1][2] = 0;
+            directions_map[directions_map.size() - 1][3] = 1;
+            MotionUtils::roll(directions_map);
             return -1.0f;
         }
         cv::calcOpticalFlowPyrLK(u_gray_previous, u_gray, prev_pts, curr_pts, status, err);
     } else {
-        cv::goodFeaturesToTrack(gray_previous, prev_pts, 500, 0.01, 10);
+        cv::goodFeaturesToTrack(gray_previous, prev_pts, config_.max_corners, config_.quality_level, config_.min_distance);
 
         if (prev_pts.empty()) {
+            // No features to track - set to WAITING status
+            directions_map[directions_map.size() - 1][0] = 0;
+            directions_map[directions_map.size() - 1][1] = 0;
+            directions_map[directions_map.size() - 1][2] = 0;
+            directions_map[directions_map.size() - 1][3] = 1;
+            MotionUtils::roll(directions_map);
             return -1.0f;
         }
 
@@ -382,7 +405,41 @@ float MotionDetector::detectLKOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray, c
         }
     }
 
-    if (move_sense.empty()) return -1.0f;
+    if (move_sense.empty()) {
+        cv::Mat fg_mask;
+        backSub->apply(frame, fg_mask);
+
+        cv::Mat blurred, tresh_frame;
+        cv::GaussianBlur(fg_mask, blurred, cv::Size(7, 7), 0);
+        cv::threshold(blurred, tresh_frame, config_.binary_threshold, 255, cv::THRESH_BINARY);
+
+        if (config_.debug) {
+            cv::imshow("LK threshold frame", tresh_frame);
+        }
+
+        if (cv::countNonZero(tresh_frame) > config_.threshold_count) {
+            // Difference detected
+            directions_map[directions_map.size() - 1][0] = 0;
+            directions_map[directions_map.size() - 1][1] = 0;
+            directions_map[directions_map.size() - 1][2] = 1;
+            directions_map[directions_map.size() - 1][3] = 0;
+        }
+        else {
+            // No movement, no difference detected - WAITING
+            directions_map[directions_map.size() - 1][0] = 0;
+            directions_map[directions_map.size() - 1][1] = 0;
+            directions_map[directions_map.size() - 1][2] = 0;
+            directions_map[directions_map.size() - 1][3] = 1;
+        }
+
+        MotionUtils::roll(directions_map);
+
+        if (hsv.empty() || hsv.type() != CV_8UC3) {
+            hsv = cv::Mat(frame.size(), CV_8UC3, cv::Scalar(0, 255, 0));
+        }
+
+        return -1.0f;
+    }
 
     float move_mode = MotionUtils::calculateMode(move_sense);
     bool is_moving_up =
@@ -683,7 +740,7 @@ void MotionDetector::updateDirectionsFromYOLO(float motion_magnitude, const std:
     MotionUtils::roll(directions_map);
 }
 
-void MotionDetector::processFrame(cv::Mat& frame, cv::Mat& orig_frame, cv::Mat& gray_previous) {
+bool MotionDetector::processFrame(cv::Mat& frame, cv::Mat& orig_frame, cv::Mat& gray_previous) {
     frame = frame(cv::Range(config_.row_start, config_.row_end), cv::Range(config_.col_start, config_.col_end));
 
     cv::Mat gray;
@@ -722,6 +779,8 @@ void MotionDetector::processFrame(cv::Mat& frame, cv::Mat& orig_frame, cv::Mat& 
         orig_frame.cols / 500.0, cv::Scalar(0, 0, 255), text_thinkness);
 
     gray_previous = gray;
+
+    return loc == 0 || loc == 2;
 }
 
 void MotionDetector::run() {
@@ -772,7 +831,7 @@ void MotionDetector::run() {
         orig_frame = frame.clone();
 
         timer.start();
-        processFrame(frame, orig_frame, gray_previous);
+        bool crossing_intent = processFrame(frame, orig_frame, gray_previous);
         double elapsed = timer.stop();
 
         cv::putText(orig_frame, "FPS: " + std::to_string(1000.0 / elapsed), cv::Point(30, 200), cv::FONT_HERSHEY_COMPLEX,
@@ -781,7 +840,8 @@ void MotionDetector::run() {
         results.push_back({
             frame_index++,
             config_.use_gpu,
-            elapsed
+            elapsed,
+            crossing_intent
         });
 
         cv::rectangle(orig_frame, cv::Point(config_.col_start, config_.row_start), cv::Point(config_.col_end, config_.row_end),

@@ -16,12 +16,12 @@ struct AppConfig {
     int row_end;
     int col_start;
     int col_end;
-    double res_ratio;
-    double threshold;
     int angle_up_min;
     int angle_up_max;
     int angle_down_min;
     int angle_down_max;
+    double res_ratio;
+    double threshold;
     int binary_threshold;
     int threshold_count;
     double pyr_scale;
@@ -30,6 +30,9 @@ struct AppConfig {
     int iterations;
     int poly_n;
     double poly_sigma;
+    int max_corners;
+    double quality_level;
+    int min_distance;
     bool debug;
     bool use_gpu;
     bool use_multi_thread;
@@ -67,7 +70,7 @@ private:
 
     void loadConfig(const std::string& configFile);
     void initializeParallelProcessing();
-    void processFrame(cv::Mat& frame, cv::Mat& orig_frame, cv::Mat& gray_previous);
+    bool processFrame(cv::Mat& frame, cv::Mat& orig_frame, cv::Mat& gray_previous);
     float detectMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_previous, cv::Mat& hsv);
     float detectFarneOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_previous, cv::Mat& hsv);
     float detectLKOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_previous, cv::Mat& hsv);
