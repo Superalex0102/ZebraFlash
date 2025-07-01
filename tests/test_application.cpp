@@ -14,6 +14,7 @@ TEST(BenchmarksTest, TestFarneSingleCPU) {
         detector.getConfig().algorithm = "FARNE";
         detector.getConfig().use_gpu = false;
         detector.getConfig().use_multi_thread = false;
+        detector.getConfig().debug = false;
         detector.run();
     } catch (const std::exception& e) {
         std::cout << e.what() << std::endl;
@@ -33,6 +34,7 @@ TEST(BenchmarksTest, TestFarneMultiCPU) {
         detector.getConfig().algorithm = "FARNE";
         detector.getConfig().use_gpu = false;
         detector.getConfig().use_multi_thread = true;
+        detector.getConfig().debug = false;
         detector.run();
     } catch (const std::exception& e) {
         std::cout << e.what() << std::endl;
@@ -52,6 +54,7 @@ TEST(BenchmarksTest, TestFarneGPU) {
         detector.getConfig().algorithm = "FARNE";
         detector.getConfig().use_gpu = true;
         detector.getConfig().use_multi_thread = false;
+        detector.getConfig().debug = false;
         detector.run();
     } catch (const std::exception& e) {
         std::cout << e.what() << std::endl;
@@ -71,6 +74,7 @@ TEST(BenchmarksTest, TestLKMultiCPU) {
         detector.getConfig().algorithm = "LK";
         detector.getConfig().use_gpu = false;
         detector.getConfig().use_multi_thread = true;
+        detector.getConfig().debug = false;
         detector.run();
     } catch (const std::exception& e) {
         std::cout << e.what() << std::endl;
@@ -90,6 +94,7 @@ TEST(BenchmarksTest, TestLKGPU) {
         detector.getConfig().algorithm = "LK";
         detector.getConfig().use_gpu = true;
         detector.getConfig().use_multi_thread = false;
+        detector.getConfig().debug = false;
         detector.run();
     } catch (const std::exception& e) {
         std::cout << e.what() << std::endl;
@@ -109,6 +114,7 @@ TEST(BenchmarksTest, TestYOLOSingleCPU) {
         detector.getConfig().algorithm = "YOLO";
         detector.getConfig().use_gpu = false;
         detector.getConfig().use_multi_thread = false;
+        detector.getConfig().debug = false;
         detector.run();
     } catch (const std::exception& e) {
         std::cout << e.what() << std::endl;
@@ -128,6 +134,7 @@ TEST(BenchmarksTest, TestYOLOGPU) {
         detector.getConfig().algorithm = "YOLO";
         detector.getConfig().use_gpu = true;
         detector.getConfig().use_multi_thread = false;
+        detector.getConfig().debug = false;
         detector.run();
     } catch (const std::exception& e) {
         std::cout << e.what() << std::endl;

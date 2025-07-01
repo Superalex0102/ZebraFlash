@@ -58,3 +58,10 @@ int MotionUtils::calculateMaxMeanColumn(const std::vector<std::vector<int>>& map
 
     return std::distance(column_means.begin(), std::max_element(column_means.begin(), column_means.end()));
 }
+
+bool MotionUtils::isAngleInRange(float angle, int min, int max) {
+    if (min <= max) {
+        return angle >= min && angle <= max;
+    }
+    return angle >= min || angle <= max;
+}

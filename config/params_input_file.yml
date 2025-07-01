@@ -3,12 +3,12 @@
   video_src: "../../input/abbeyroad2.mkv",  # Path of the input file, use RTSP for real IP camera. e.g: rtsp://localhost:8554/test
   res_ratio: 0.14,        # Scale resolution for computing optical flow
   # The image processing area (area of interest) can be defined with the following margins
-  upper_margin: 330,      # MASK_Y_MIN
-  bottom_margin: 550,     # MASK_Y_MAX
-  left_margin: 900,       # MASK_X_MIN
+  upper_margin: 300,      # MASK_Y_MIN
+  bottom_margin: 500,     # MASK_Y_MAX
+  left_margin: 950,       # MASK_X_MIN
   right_margin: 170,      # MASK_X_MAX
 
-  angle_up_min: 335,         # Movement between these two angles should be detected while walking upwards
+  angle_up_min: 345,         # Movement between these two angles should be detected while walking upwards
   angle_up_max: 20,         # Movement between these two angles should be detected while walking upwards
   angle_down_min: 165,         # Movement between these two angles should be detected while walking downwards
   angle_down_max: 210,         # Movement between these two angles should be detected while walking downwards
@@ -34,10 +34,10 @@
   seek: 0,            # video starting position in frames
   seek_end: -1,            # video ending position in frames
   debug: true,            # debug messages and screens displayed
-  use_gpu: false,            # GPU acceleration is being used
-  use_multi_thread: true,            # Multi thread is being used
+  use_gpu: true,            # GPU acceleration is being used
+  use_multi_thread: false,            # Multi thread is being used
   thread_amount: -1,            # number of threads used for multi threading tasks, -1 for auto
-  algorithm: "FARNE",            # the algorithm used for processing the images. FARNE, LK, YOLO
+  algorithm: "LK",            # the algorithm used for processing the images. FARNE, LK, YOLO
 
   #YOLO
   yolo_weights_path: "../../input/yolo/yolov4-tiny.weights",

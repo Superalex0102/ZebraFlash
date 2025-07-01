@@ -240,8 +240,8 @@ float MotionDetector::detectFarneOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray
 
     float move_mode = MotionUtils::calculateMode(move_sense);
     bool is_moving_up =
-        (move_mode >= config_.angle_up_min && move_mode <= config_.angle_up_max ||
-        move_mode >= config_.angle_down_min && move_mode <= config_.angle_down_max);
+        MotionUtils::isAngleInRange(move_mode, config_.angle_up_min, config_.angle_up_max) ||
+        MotionUtils::isAngleInRange(move_mode, config_.angle_down_min, config_.angle_down_max);
 
     if (config_.debug) {
         std::cout << move_mode << std::endl;
@@ -261,26 +261,26 @@ float MotionDetector::detectFarneOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray
         directions_map[directions_map.size() - 1][3] = 0;
     }
     else { //No movement detected
-        cv::Mat fg_mask;
-        backSub->apply(frame, fg_mask);
-
-        cv::Mat fg_mask_blurred;
-        cv::GaussianBlur(fg_mask, fg_mask_blurred, cv::Size(7, 7), 0);
-
-        cv::Mat tresh_frame;
-        cv::threshold(fg_mask_blurred, tresh_frame, config_.binary_threshold, 255, cv::THRESH_BINARY);
-
-        if (config_.debug) {
-            cv::imshow("tresh_frame", tresh_frame);
-        }
-
-        if (cv::countNonZero(tresh_frame) > config_.threshold_count) {
-            directions_map[directions_map.size() - 1][0] = 0;
-            directions_map[directions_map.size() - 1][1] = 0;
-            directions_map[directions_map.size() - 1][2] = 1;
-            directions_map[directions_map.size() - 1][3] = 0;
-        }
-        else { //No movement, no difference detected
+        // cv::Mat fg_mask;
+        // backSub->apply(frame, fg_mask);
+        //
+        // cv::Mat fg_mask_blurred;
+        // cv::GaussianBlur(fg_mask, fg_mask_blurred, cv::Size(7, 7), 0);
+        //
+        // cv::Mat tresh_frame;
+        // cv::threshold(fg_mask_blurred, tresh_frame, config_.binary_threshold, 255, cv::THRESH_BINARY);
+        //
+        // if (config_.debug) {
+        //     cv::imshow("tresh_frame", tresh_frame);
+        // }
+        //
+        // if (cv::countNonZero(tresh_frame) > config_.threshold_count) {
+        //     directions_map[directions_map.size() - 1][0] = 0;
+        //     directions_map[directions_map.size() - 1][1] = 0;
+        //     directions_map[directions_map.size() - 1][2] = 1;
+        //     directions_map[directions_map.size() - 1][3] = 0;
+        // }
+        { //No movement, no difference detected
             directions_map[directions_map.size() - 1][0] = 0;
             directions_map[directions_map.size() - 1][1] = 0;
             directions_map[directions_map.size() - 1][2] = 0;
@@ -406,46 +406,45 @@ float MotionDetector::detectLKOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray, c
         }
     }
 
-    if (move_sense.empty()) {
-        cv::Mat fg_mask;
-        backSub->apply(frame, fg_mask);
-
-        cv::Mat blurred, tresh_frame;
-        cv::GaussianBlur(fg_mask, blurred, cv::Size(7, 7), 0);
-        cv::threshold(blurred, tresh_frame, config_.binary_threshold, 255, cv::THRESH_BINARY);
-
-        if (config_.debug) {
-            cv::imshow("LK threshold frame", tresh_frame);
-        }
-
-        if (cv::countNonZero(tresh_frame) > config_.threshold_count) {
-            // Difference detected
-            directions_map[directions_map.size() - 1][0] = 0;
-            directions_map[directions_map.size() - 1][1] = 0;
-            directions_map[directions_map.size() - 1][2] = 1;
-            directions_map[directions_map.size() - 1][3] = 0;
-        }
-        else {
-            // No movement, no difference detected - WAITING
-            directions_map[directions_map.size() - 1][0] = 0;
-            directions_map[directions_map.size() - 1][1] = 0;
-            directions_map[directions_map.size() - 1][2] = 0;
-            directions_map[directions_map.size() - 1][3] = 1;
-        }
-
-        MotionUtils::roll(directions_map);
-
-        if (hsv.empty() || hsv.type() != CV_8UC3) {
-            hsv = cv::Mat(frame.size(), CV_8UC3, cv::Scalar(0, 255, 0));
-        }
-
-        return -1.0f;
-    }
+    // if (move_sense.empty()) {
+        // cv::Mat fg_mask;
+        // backSub->apply(frame, fg_mask);
+        //
+        // cv::Mat blurred, tresh_frame;
+        // cv::GaussianBlur(fg_mask, blurred, cv::Size(7, 7), 0);
+        // cv::threshold(blurred, tresh_frame, config_.binary_threshold, 255, cv::THRESH_BINARY);
+        //
+        // if (config_.debug) {
+        //     cv::imshow("LK threshold frame", tresh_frame);
+        // }
+        //
+        // if (cv::countNonZero(tresh_frame) > config_.threshold_count) {
+        //     // Difference detected
+        //     directions_map[directions_map.size() - 1][0] = 0;
+        //     directions_map[directions_map.size() - 1][1] = 0;
+        //     directions_map[directions_map.size() - 1][2] = 1;
+        //     directions_map[directions_map.size() - 1][3] = 0;
+        // }
+        // else {
+        //     // No movement, no difference detected - WAITING
+        //     directions_map[directions_map.size() - 1][0] = 0;
+        //     directions_map[directions_map.size() - 1][1] = 0;
+        //     directions_map[directions_map.size() - 1][2] = 0;
+        //     directions_map[directions_map.size() - 1][3] = 1;
+        // }
+        //
+        // MotionUtils::roll(directions_map);
+        //
+        // if (hsv.empty() || hsv.type() != CV_8UC3) {
+        //     hsv = cv::Mat(frame.size(), CV_8UC3, cv::Scalar(0, 255, 0));
+        // }
+    //     return -1.0f;
+    // }
 
     float move_mode = MotionUtils::calculateMode(move_sense);
     bool is_moving_up =
-        (move_mode >= config_.angle_up_min && move_mode <= config_.angle_up_max ||
-         move_mode >= config_.angle_down_min && move_mode <= config_.angle_down_max);
+        MotionUtils::isAngleInRange(move_mode, config_.angle_up_min, config_.angle_up_max) ||
+        MotionUtils::isAngleInRange(move_mode, config_.angle_down_min, config_.angle_down_max);
 
     if (config_.debug) {
         std::cout << "LK Mode: " << move_mode << std::endl;
@@ -465,24 +464,24 @@ float MotionDetector::detectLKOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray, c
         directions_map[directions_map.size() - 1][3] = 0;
     }
     else {
-        cv::Mat fg_mask;
-        backSub->apply(frame, fg_mask);
-
-        cv::Mat blurred, tresh_frame;
-        cv::GaussianBlur(fg_mask, blurred, cv::Size(7, 7), 0);
-        cv::threshold(blurred, tresh_frame, config_.binary_threshold, 255, cv::THRESH_BINARY);
-
-        if (config_.debug) {
-            cv::imshow("LK threshold frame", tresh_frame);
-        }
-
-        if (cv::countNonZero(tresh_frame) > config_.threshold_count) {
-            directions_map[directions_map.size() - 1][0] = 0;
-            directions_map[directions_map.size() - 1][1] = 0;
-            directions_map[directions_map.size() - 1][2] = 1;
-            directions_map[directions_map.size() - 1][3] = 0;
-        }
-        else {
+        // cv::Mat fg_mask;
+        // backSub->apply(frame, fg_mask);
+        //
+        // cv::Mat blurred, tresh_frame;
+        // cv::GaussianBlur(fg_mask, blurred, cv::Size(7, 7), 0);
+        // cv::threshold(blurred, tresh_frame, config_.binary_threshold, 255, cv::THRESH_BINARY);
+        //
+        // if (config_.debug) {
+        //     cv::imshow("LK threshold frame", tresh_frame);
+        // }
+        //
+        // if (cv::countNonZero(tresh_frame) > config_.threshold_count) {
+        //     directions_map[directions_map.size() - 1][0] = 0;
+        //     directions_map[directions_map.size() - 1][1] = 0;
+        //     directions_map[directions_map.size() - 1][2] = 1;
+        //     directions_map[directions_map.size() - 1][3] = 0;
+        // }
+        {
             directions_map[directions_map.size() - 1][0] = 0;
             directions_map[directions_map.size() - 1][1] = 0;
             directions_map[directions_map.size() - 1][2] = 0;
@@ -586,7 +585,7 @@ float MotionDetector::detectYOLOMotion(cv::Mat& frame) {
 
     cv::Mat blob;
     cv::dnn::blobFromImage(frame, blob, 1.0 / 255.0, cv::Size(config_.yolo_input_size, config_.yolo_input_size),
-        cv::Scalar(0, 0, 0), true, true, CV_32F);
+        cv::Scalar(0, 0, 0), true, false, CV_32F);
 
     yolo_network.setInput(blob);
 
@@ -619,8 +618,7 @@ float MotionDetector::detectYOLOMotion(cv::Mat& frame) {
                 double max_class_score;
                 minMaxLoc(scores, 0, &max_class_score, 0, &class_id_point);
 
-                //TODO: better box drawing around pedestrians
-                if (max_class_score > config_.yolo_confidence_threshold) {
+                if (max_class_score > config_.yolo_confidence_threshold && class_id_point.x == 0) {
                     int center_x = static_cast<int>(data[0] * frame.cols);
                     int center_y = static_cast<int>(data[1] * frame.rows);
                     int width = static_cast<int>(data[2] * frame.cols);
@@ -670,13 +668,13 @@ float MotionDetector::detectYOLOMotion(cv::Mat& frame) {
         cv::waitKey(1);
     }
 
-    float motion_magnitude = calculateMotionFromDetections(current_detections);
+    float move_mode = calculateMotionFromDetections(current_detections);
 
     previous_detections = current_detections;
 
-    updateDirectionsFromYOLO(motion_magnitude, current_detections);
+    updateDirectionsFromYOLO(move_mode, current_detections);
 
-    return motion_magnitude;
+    return move_mode;
 }
 
 float MotionDetector::calculateMotionFromDetections(const std::vector<cv::Rect>& current_detections) {
@@ -720,7 +718,7 @@ float MotionDetector::calculateMotionFromDetections(const std::vector<cv::Rect>&
     return MotionUtils::calculateMode(motion_angles);
 }
 
-void MotionDetector::updateDirectionsFromYOLO(float motion_magnitude, const std::vector<cv::Rect>& detections) {
+void MotionDetector::updateDirectionsFromYOLO(float move_mode, const std::vector<cv::Rect>& detections) {
 
     //TODO: Compare this to the other detections way, maybe make it to a separate function
     if (detections.empty()) {
@@ -729,19 +727,17 @@ void MotionDetector::updateDirectionsFromYOLO(float motion_magnitude, const std:
         directions_map[directions_map.size() - 1][2] = 0;
         directions_map[directions_map.size() - 1][3] = 1;
     } else {
-        if (motion_magnitude >= config_.angle_up_min && motion_magnitude <= config_.angle_up_max) {
-            // Upward motion
+
+        bool is_moving_up =
+            MotionUtils::isAngleInRange(move_mode, config_.angle_up_min, config_.angle_up_max) ||
+            MotionUtils::isAngleInRange(move_mode, config_.angle_down_min, config_.angle_down_max);
+
+        if (is_moving_up) {
             directions_map[directions_map.size() - 1][0] = 3.5f;
             directions_map[directions_map.size() - 1][1] = 0;
             directions_map[directions_map.size() - 1][2] = 0;
             directions_map[directions_map.size() - 1][3] = 0;
-        } else if (motion_magnitude >= config_.angle_down_min && motion_magnitude <= config_.angle_down_max) {
-            // Downward motion
-            directions_map[directions_map.size() - 1][0] = 3.5f;
-            directions_map[directions_map.size() - 1][1] = 0;
-            directions_map[directions_map.size() - 1][2] = 0;
-            directions_map[directions_map.size() - 1][3] = 0;
-        } else if (motion_magnitude > 5.0f) {
+        } else if (move_mode > 5.0f) {
             // Other directions
             directions_map[directions_map.size() - 1][0] = 0;
             directions_map[directions_map.size() - 1][1] = 1;

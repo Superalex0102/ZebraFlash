@@ -99,15 +99,33 @@ void saveResultToCSV(const std::string& filename,
 
     double crossing_intent_rate = crossingIntentRate(results, ground_truth);
 
-    file << "Average FPS:," << std::fixed << std::setprecision(3) << average_fps << "\n";
-    file << "Crossing Intent Rate:," << crossing_intent_rate << "\n";
-
-    file << "Frame Index,Use GPU,FPS,Predicted Intent,Groundtruth Intent\n";
+    double predicted_crossing = 0;
+    double predicted_not_crossing = 0;
+    double ground_crossing = 0;
+    double ground_not_crossing = 0;
 
     std::unordered_map<int, bool> ground_truth_map;
     for (const auto& gt : ground_truth) {
         ground_truth_map[gt.frame_index] = gt.crossing_intent;
+        if (gt.crossing_intent)
+            ground_crossing++;
+        else
+            ground_not_crossing++;
     }
+
+    for (const auto& r : results) {
+        if (r.crossing_intent)
+            predicted_crossing++;
+        else
+            predicted_not_crossing++;
+    }
+
+    file << "Average FPS:," << std::fixed << std::setprecision(3) << average_fps << "\n";
+    file << "Crossing Intent Rate (%):," << crossing_intent_rate << "\n";
+    file << "Not Crossing Class Error (%):," << (1.0 - predicted_not_crossing / ground_not_crossing) << "\n";
+    file << "Crossing Class Error (%):," << (1.0 - predicted_crossing / ground_crossing) << "\n";
+
+    file << "Frame Index,Use GPU,FPS,Predicted Intent,Groundtruth Intent\n";
 
     for (const auto& r : results) {
         double fps = (r.process_time_ms > 0.0) ? 1000.0 / r.process_time_ms : 0.0;
@@ -150,7 +168,7 @@ void saveBenchmarkResults(bool use_gpu, const std::string& algorithm, const std:
     std::cout << "Saving benchmark results to: " << filename << std::endl;
     std::cout << "Current working directory: " << std::filesystem::current_path() << std::endl;
 
-    auto ground_truth = loadGroundTruthCrossingIntent("../../input/video5_annotation.csv");
+    auto ground_truth = loadGroundTruthCrossingIntent("../../input/abbeyroad2_annotation.csv");
 
     saveResultToCSV(filename, results, ground_truth);
 }
