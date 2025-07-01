@@ -12,6 +12,7 @@ struct AppConfig {
     std::string video_src;
     int size;
     int seek;
+    int seek_end;
     int row_start;
     int row_end;
     int col_start;

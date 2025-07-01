@@ -24,7 +24,14 @@ struct BenchmarkResult {
     bool crossing_intent;
 };
 
+struct CrossIntent {
+    int frame_index;
+    bool crossing_intent;
+};
+
 std::string getTimestamp();
+std::vector<CrossIntent> loadGroundTruthCrossingIntent(const std::string& xml_filepath);
+double crossingIntentRate(const std::vector<BenchmarkResult>& results, const std::vector<CrossIntent>& ground_truth);
 void saveResultToCSV(const std::string& filename, const std::vector<BenchmarkResult>& results);
 void saveBenchmarkResults(bool use_gpu, const std::string& algorithm, const std::vector<BenchmarkResult>& results);
 

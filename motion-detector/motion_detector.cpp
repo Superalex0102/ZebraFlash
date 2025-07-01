@@ -31,6 +31,7 @@ void MotionDetector::loadConfig(const std::string &configFile) {
     config_.video_src = config["video_src"].as<std::string>();
     config_.size = config["size"].as<int>();
     config_.seek = config["seek"].as<int>();
+    config_.seek_end = config["seek_end"].as<int>();
     config_.row_start = config["upper_margin"].as<int>();
     config_.row_end = config["bottom_margin"].as<int>();
     config_.col_start = config["left_margin"].as<int>();
@@ -607,9 +608,6 @@ float MotionDetector::detectYOLOMotion(cv::Mat& frame) {
     std::vector<float> confidences;
     std::vector<int> class_ids;
 
-    float scale_x = static_cast<float>(frame.cols) / config_.yolo_input_size;
-    float scale_y = static_cast<float>(frame.rows) / config_.yolo_input_size;
-
     for (auto& output : outputs) {
         for (int i = 0; i < output.rows; ++i) {
             const float* data = output.ptr<float>(i);
@@ -621,11 +619,12 @@ float MotionDetector::detectYOLOMotion(cv::Mat& frame) {
                 double max_class_score;
                 minMaxLoc(scores, 0, &max_class_score, 0, &class_id_point);
 
+                //TODO: better box drawing around pedestrians
                 if (max_class_score > config_.yolo_confidence_threshold) {
-                    int center_x = static_cast<int>(data[0] * scale_x);
-                    int center_y = static_cast<int>(data[1] * scale_y);
-                    int width = static_cast<int>(data[2] * scale_x);
-                    int height = static_cast<int>(data[3] * scale_y);
+                    int center_x = static_cast<int>(data[0] * frame.cols);
+                    int center_y = static_cast<int>(data[1] * frame.rows);
+                    int width = static_cast<int>(data[2] * frame.cols);
+                    int height = static_cast<int>(data[3] * frame.rows);
                     int left = center_x - width / 2;
                     int top = center_y - height / 2;
 
@@ -637,21 +636,38 @@ float MotionDetector::detectYOLOMotion(cv::Mat& frame) {
         }
     }
 
+    if (config_.debug) {
+        for (size_t i = 0; i < boxes.size(); ++i) {
+            std::cout << "Detection " << i
+                      << ": class_id=" << class_ids[i]
+                      << ", confidence=" << confidences[i]
+                      << ", box=" << boxes[i] << std::endl;
+        }
+    }
+
     std::vector<int> indices;
     cv::dnn::NMSBoxes(boxes, confidences, config_.yolo_confidence_threshold, config_.yolo_nms_threshold, indices);
 
     std::vector<cv::Rect> current_detections;
-    for (int idx : indices) {
-        current_detections.push_back(boxes[idx]);
+    cv::Mat display_frame = frame.clone();
 
-        if (config_.debug) {
-            cv::rectangle(frame, boxes[idx], cv::Scalar(0, 255, 0), 2);
-            std::string label = class_names.size() > class_ids[idx] ?
-                               class_names[class_ids[idx]] : "Unknown";
-            cv::putText(frame, label + " " + std::to_string(confidences[idx]),
-                       cv::Point(boxes[idx].x, boxes[idx].y - 10),
-                       cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 255, 0), 1);
+    for (int idx : indices) {
+        if (class_ids[idx] == 0) {
+            cv::rectangle(display_frame, boxes[idx], cv::Scalar(0, 255, 0), 2);
+            std::string label = cv::format("Pedestrian: %.2f", confidences[idx]);
+            int baseLine = 0;
+            cv::Size labelSize = cv::getTextSize(label, cv::FONT_HERSHEY_SIMPLEX, 0.5, 1, &baseLine);
+            int top = std::max(boxes[idx].y, labelSize.height);
+            cv::putText(display_frame, label, cv::Point(boxes[idx].x, top - 5),
+                        cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 255, 0), 1);
         }
+
+        current_detections.push_back(boxes[idx]);
+    }
+
+    if (config_.debug) {
+        cv::imshow("Pedestrian Detections", display_frame);
+        cv::waitKey(1);
     }
 
     float motion_magnitude = calculateMotionFromDetections(current_detections);
@@ -665,7 +681,7 @@ float MotionDetector::detectYOLOMotion(cv::Mat& frame) {
 
 float MotionDetector::calculateMotionFromDetections(const std::vector<cv::Rect>& current_detections) {
     if (previous_detections.empty() || current_detections.empty()) {
-        return 0.0f;
+        return INT_MIN;
     }
 
     std::vector<float> motion_angles;
@@ -705,6 +721,8 @@ float MotionDetector::calculateMotionFromDetections(const std::vector<cv::Rect>&
 }
 
 void MotionDetector::updateDirectionsFromYOLO(float motion_magnitude, const std::vector<cv::Rect>& detections) {
+
+    //TODO: Compare this to the other detections way, maybe make it to a separate function
     if (detections.empty()) {
         directions_map[directions_map.size() - 1][0] = 0;
         directions_map[directions_map.size() - 1][1] = 0;
@@ -713,13 +731,13 @@ void MotionDetector::updateDirectionsFromYOLO(float motion_magnitude, const std:
     } else {
         if (motion_magnitude >= config_.angle_up_min && motion_magnitude <= config_.angle_up_max) {
             // Upward motion
-            directions_map[directions_map.size() - 1][0] = 1;
+            directions_map[directions_map.size() - 1][0] = 3.5f;
             directions_map[directions_map.size() - 1][1] = 0;
             directions_map[directions_map.size() - 1][2] = 0;
             directions_map[directions_map.size() - 1][3] = 0;
         } else if (motion_magnitude >= config_.angle_down_min && motion_magnitude <= config_.angle_down_max) {
             // Downward motion
-            directions_map[directions_map.size() - 1][0] = 1;
+            directions_map[directions_map.size() - 1][0] = 3.5f;
             directions_map[directions_map.size() - 1][1] = 0;
             directions_map[directions_map.size() - 1][2] = 0;
             directions_map[directions_map.size() - 1][3] = 0;
@@ -796,7 +814,7 @@ void MotionDetector::run() {
 
     Benchmark timer;
     std::vector<BenchmarkResult> results;
-    int frame_index = 0;
+    int frame_index = config_.seek;
 
     int height = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_HEIGHT));
     int width = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_WIDTH));
@@ -804,7 +822,7 @@ void MotionDetector::run() {
     config_.row_end = height - config_.row_end;
     config_.col_end = width - config_.col_end;
 
-    cap.set(cv::CAP_PROP_POS_MSEC, config_.seek);
+    cap.set(cv::CAP_PROP_POS_FRAMES, config_.seek);
 
     cv::Mat frame_previous;
     cap >> frame_previous;
@@ -848,7 +866,7 @@ void MotionDetector::run() {
             cv::Scalar(0, 255, 0), 3);
         cv::imshow(WINDOW_NAME, orig_frame);
 
-        if (cv::waitKey(1) == 'q') {
+        if (cv::waitKey(1) == 'q' || (config_.seek_end > 0 && cap.get(cv::CAP_PROP_POS_FRAMES) >= config_.seek_end)) {
             break;
         }
     }
