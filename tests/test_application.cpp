@@ -3,7 +3,7 @@
 #include "../motion-detector/motion_detector.h"
 #include "../benchmark/benchmark.h"
 
-TEST(AlgorithmsTest, TestFarneSingleCPU) {
+TEST(BenchmarksTest, TestFarneSingleCPU) {
     const std::string INPUT_FILE = "../../config/params_input_file.yml";
 
     std::cout << "Current working directory: "
@@ -22,7 +22,7 @@ TEST(AlgorithmsTest, TestFarneSingleCPU) {
     ASSERT_TRUE(std::filesystem::exists("results/cpu_FARNE_benchmark_" + getTimestamp()) + ".csv") << "Benchmark file was not created.";
 }
 
-TEST(AlgorithmsTest, TestFarneMultiCPU) {
+TEST(BenchmarksTest, TestFarneMultiCPU) {
     const std::string INPUT_FILE = "../../config/params_input_file.yml";
 
     std::cout << "Current working directory: "
@@ -41,7 +41,7 @@ TEST(AlgorithmsTest, TestFarneMultiCPU) {
     ASSERT_TRUE(std::filesystem::exists("results/cpu_FARNE_benchmark_" + getTimestamp()) + ".csv") << "Benchmark file was not created.";
 }
 
-TEST(AlgorithmsTest, TestFarneGPU) {
+TEST(BenchmarksTest, TestFarneGPU) {
     const std::string INPUT_FILE = "../../config/params_input_file.yml";
 
     std::cout << "Current working directory: "
@@ -60,7 +60,7 @@ TEST(AlgorithmsTest, TestFarneGPU) {
     ASSERT_TRUE(std::filesystem::exists("results/gpu_FARNE_benchmark_" + getTimestamp()) + ".csv") << "Benchmark file was not created.";
 }
 
-TEST(AlgorithmsTest, TestLKMultiCPU) {
+TEST(BenchmarksTest, TestLKMultiCPU) {
     const std::string INPUT_FILE = "../../config/params_input_file.yml";
 
     std::cout << "Current working directory: "
@@ -79,7 +79,7 @@ TEST(AlgorithmsTest, TestLKMultiCPU) {
     ASSERT_TRUE(std::filesystem::exists("results/cpu_LK_benchmark_" + getTimestamp()) + ".csv") << "Benchmark file was not created.";
 }
 
-TEST(AlgorithmsTest, TestLKGPU) {
+TEST(BenchmarksTest, TestLKGPU) {
     const std::string INPUT_FILE = "../../config/params_input_file.yml";
 
     std::cout << "Current working directory: "
@@ -98,7 +98,7 @@ TEST(AlgorithmsTest, TestLKGPU) {
     ASSERT_TRUE(std::filesystem::exists("results/gpu_LK_benchmark_" + getTimestamp()) + ".csv") << "Benchmark file was not created.";
 }
 
-TEST(AlgorithmsTest, TestYOLOSingleCPU) {
+TEST(BenchmarksTest, TestYOLOSingleCPU) {
     const std::string INPUT_FILE = "../../config/params_input_file.yml";
 
     std::cout << "Current working directory: "
@@ -117,7 +117,7 @@ TEST(AlgorithmsTest, TestYOLOSingleCPU) {
     ASSERT_TRUE(std::filesystem::exists("results/cpu_YOLO_benchmark_" + getTimestamp()) + ".csv") << "Benchmark file was not created.";
 }
 
-TEST(AlgorithmsTest, TestYOLOGPU) {
+TEST(BenchmarksTest, TestYOLOGPU) {
     const std::string INPUT_FILE = "../../config/params_input_file.yml";
 
     std::cout << "Current working directory: "
