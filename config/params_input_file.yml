@@ -23,9 +23,9 @@
   poly_sigma: 1.1,        # Standard deviation of the Gaussian that is used to smooth derivatives used as a basis for the polynomial expansion
 
   # Parameters to fine tune Lucas-Kanade algorithm
-  max_corners: 1000,
-  quality_level: 0.01,
-  min_distance: 5,
+  max_corners: 100,
+  quality_level: 0.3,
+  min_distance: 7,
 
   # Other parameters
   threshold: 2.5,         # Threshold value for magnitude
@@ -34,11 +34,11 @@
   threshold_count: 0,     # minimum number of different pixels from the background model
   seek: 0,            # video starting position in frames
   seek_end: 2500,            # video ending position in frames
-  debug: false,            # debug messages and screens displayed
-  use_gpu: true,            # GPU acceleration is being used
+  debug: true,            # debug messages and screens displayed
+  use_gpu: false,            # GPU acceleration is being used
   use_multi_thread: false,            # Multi thread is being used
   thread_amount: -1,            # number of threads used for multi threading tasks, -1 for auto
-  algorithm: "YOLO",            # the algorithm used for processing the images. FARNE, LK, YOLO
+  algorithm: "LK",            # the algorithm used for processing the images. FARNE, LK, YOLO
 
   #YOLO
   yolo_weights_path: "../../input/yolo/yolov4-tiny.weights",

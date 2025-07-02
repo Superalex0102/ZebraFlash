@@ -358,8 +358,11 @@ float MotionDetector::detectLKOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray, c
     cv::Mat motionMask = cv::Mat::ones(frame.size(), CV_8UC1) * 255;
     for (const auto& contour : contours) {
         double area = cv::contourArea(contour);
-        if (area > 4500) {
-            cv::Rect bound = cv::boundingRect(contour);
+        cv::Rect bound = cv::boundingRect(contour);
+
+        double aspectRatio = static_cast<double>(bound.height) / bound.width;
+
+        if (area > 500 && area < 4500 && aspectRatio > 1.2) {
             rectangle(motionMask, bound, cv::Scalar(0), cv::FILLED);
         }
     }
@@ -375,7 +378,8 @@ float MotionDetector::detectLKOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray, c
 
     if (config_.use_gpu && cv::cuda::getCudaEnabledDeviceCount() > 0) {
 #ifdef HAVE_CUDA
-        cv::goodFeaturesToTrack(gray_filtered_previous, prev_pts, config_.max_corners, config_.quality_level, config_.min_distance);
+        cv::goodFeaturesToTrack(gray_filtered_previous, prev_pts, config_.max_corners, config_.quality_level, config_.min_distance,
+            cv::Mat(), 7, false, 0.04);
         if (prev_pts.empty()) {
             // No features to track - set to WAITING status
             directions_map[directions_map.size() - 1][0] = 0;
@@ -416,7 +420,8 @@ float MotionDetector::detectLKOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray, c
         gray_filtered_previous.copyTo(u_gray_previous);
         gray_filtered.copyTo(u_gray);
 
-        cv::goodFeaturesToTrack(u_gray_previous, prev_pts, config_.max_corners, config_.quality_level, config_.min_distance);
+        cv::goodFeaturesToTrack(u_gray_previous, prev_pts, config_.max_corners, config_.quality_level, config_.min_distance,
+            cv::Mat(), 7, false, 0.04);
 
         if (prev_pts.empty()) {
             // No features to track - set to WAITING status
@@ -429,7 +434,8 @@ float MotionDetector::detectLKOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray, c
         }
         cv::calcOpticalFlowPyrLK(u_gray_previous, u_gray, prev_pts, curr_pts, status, err);
     } else {
-        cv::goodFeaturesToTrack(gray_filtered_previous, prev_pts, config_.max_corners, config_.quality_level, config_.min_distance);
+        cv::goodFeaturesToTrack(gray_filtered_previous, prev_pts, config_.max_corners, config_.quality_level, config_.min_distance,
+            cv::Mat(), 7, false, 0.04);
 
         if (prev_pts.empty()) {
             // No features to track - set to WAITING status
