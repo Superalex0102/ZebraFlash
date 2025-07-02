@@ -7,6 +7,7 @@
 
 #include "benchmark.h"
 
+#include <algorithm>
 #include <unordered_map>
 
 struct Benchmark::Impl {
