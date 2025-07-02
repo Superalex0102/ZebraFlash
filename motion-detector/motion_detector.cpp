@@ -29,6 +29,7 @@ void MotionDetector::loadConfig(const std::string &configFile) {
     YAML::Node config = YAML::LoadFile(configFile);
 
     config_.video_src = config["video_src"].as<std::string>();
+    config_.video_annot = config["video_annot"].as<std::string>();
     config_.size = config["size"].as<int>();
     config_.seek = config["seek"].as<int>();
     config_.seek_end = config["seek_end"].as<int>();
@@ -104,18 +105,43 @@ static cv::cuda::GpuMat d_gray_previous, d_gray, d_flow;
 
 float MotionDetector::detectFarneOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray, cv::Mat& gray_previous, cv::Mat& hsv) {
     cv::Mat flow(gray.size(), CV_32FC2);
-    cv::Mat mask, ang, ang_180, mag;
+    cv::Mat mask, ang, ang_180, mag, fgMask;
+
+    backSub->apply(frame, fgMask);
+
+    cv::morphologyEx(fgMask, fgMask, cv::MORPH_OPEN, cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3,3 )));
+    std::vector<std::vector<cv::Point>> contours;
+    findContours(fgMask, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+
+    cv::Mat motionMask = cv::Mat::ones(frame.size(), CV_8UC1) * 255;
+    for (const auto& contour : contours) {
+        double area = cv::contourArea(contour);
+        if (area > 5000) {
+            cv::Rect bound = cv::boundingRect(contour);
+            rectangle(motionMask, bound, cv::Scalar(0), cv::FILLED);
+        }
+    }
+
+    cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
+    cv::Mat gray_filtered_previous, gray_filtered;
+    gray_previous.copyTo(gray_filtered_previous, motionMask);
+    gray.copyTo(gray_filtered, motionMask);
+
+    if (config_.debug) {
+        cv::imshow("Pedestrian Motion (Farnebäck)", gray_filtered);
+    }
+
 
     if (config_.use_gpu && cv::cuda::getCudaEnabledDeviceCount() > 0) {
 #ifdef HAVE_CUDA
         try {
             cv::cuda::Stream stream;
-            d_gray.upload(gray, stream);
-            d_gray_previous.upload(gray_previous, stream);
+            d_gray.upload(gray_filtered, stream);
+            d_gray_previous.upload(gray_filtered_previous, stream);
 
-            if (d_flow.size() != gray.size() || d_flow.type() != CV_32FC2) {
+            if (d_flow.size() != gray_filtered.size() || d_flow.type() != CV_32FC2) {
                 d_flow.release();
-                d_flow.create(gray.size(), CV_32FC2);
+                d_flow.create(gray_filtered.size(), CV_32FC2);
             }
 
             static auto farneback = cv::cuda::FarnebackOpticalFlow::create(
@@ -149,7 +175,7 @@ float MotionDetector::detectFarneOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray
     } else if (config_.use_gpu && cv::ocl::haveOpenCL()) {
         try {
             cv::UMat u_gray_previous, u_gray, u_flow;
-            cv::calcOpticalFlowFarneback(gray_previous, gray, flow, config_.pyr_scale,
+            cv::calcOpticalFlowFarneback(gray_filtered_previous, gray_filtered, flow, config_.pyr_scale,
                 config_.levels, config_.winsize, config_.iterations,
                 config_.poly_n, config_.poly_sigma, 0);
 
@@ -176,17 +202,17 @@ float MotionDetector::detectFarneOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray
             return -1.0f;
         }
     } else if (config_.use_multi_thread) {
-        int cols_per_thread = gray.cols / config_.thread_amount;
+        int cols_per_thread = gray_filtered.cols / config_.thread_amount;
         std::vector<std::future<void>> futures;
         std::vector<cv::Mat> flow_parts(config_.thread_amount);
 
         for (int i = 0; i < config_.thread_amount; i++) {
             int start_col = i * cols_per_thread;
-            int end_col = (i == config_.thread_amount - 1) ? gray.cols : (i + 1) * cols_per_thread;
+            int end_col = (i == config_.thread_amount - 1) ? gray_filtered.cols : (i + 1) * cols_per_thread;
 
             cv::Range col_range(start_col, end_col);
-            cv::Mat gray_section = gray(cv::Range::all(), col_range);
-            cv::Mat prev_section = gray_previous(cv::Range::all(), col_range);
+            cv::Mat gray_section = gray_filtered(cv::Range::all(), col_range);
+            cv::Mat prev_section = gray_filtered_previous(cv::Range::all(), col_range);
 
             flow_parts[i] = cv::Mat(gray_section.rows, end_col - start_col, CV_32FC2);
 
@@ -217,7 +243,7 @@ float MotionDetector::detectFarneOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray
         mask = mag > config_.threshold;
     }
     else {
-        cv::calcOpticalFlowFarneback(gray_previous, gray, flow, config_.pyr_scale, config_.levels,
+        cv::calcOpticalFlowFarneback(gray_filtered_previous, gray_filtered, flow, config_.pyr_scale, config_.levels,
             config_.winsize, config_.iterations, config_.poly_n, config_.poly_sigma, 0);
 
         //TODO: need to cleanup this code
@@ -321,9 +347,35 @@ float MotionDetector::detectLKOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray, c
     std::vector<uchar> status;
     std::vector<float> err;
 
+    cv::Mat fgMask;
+
+    backSub->apply(frame, fgMask);
+
+    cv::morphologyEx(fgMask, fgMask, cv::MORPH_OPEN, cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3,3 )));
+    std::vector<std::vector<cv::Point>> contours;
+    findContours(fgMask, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+
+    cv::Mat motionMask = cv::Mat::ones(frame.size(), CV_8UC1) * 255;
+    for (const auto& contour : contours) {
+        double area = cv::contourArea(contour);
+        if (area > 4500) {
+            cv::Rect bound = cv::boundingRect(contour);
+            rectangle(motionMask, bound, cv::Scalar(0), cv::FILLED);
+        }
+    }
+
+    cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
+    cv::Mat gray_filtered_previous, gray_filtered;
+    gray_previous.copyTo(gray_filtered_previous, motionMask);
+    gray.copyTo(gray_filtered, motionMask);
+
+    if (config_.debug) {
+        cv::imshow("Pedestrian Motion (LK)", gray_filtered);
+    }
+
     if (config_.use_gpu && cv::cuda::getCudaEnabledDeviceCount() > 0) {
 #ifdef HAVE_CUDA
-        cv::goodFeaturesToTrack(gray_previous, prev_pts, config_.max_corners, config_.quality_level, config_.min_distance);
+        cv::goodFeaturesToTrack(gray_filtered_previous, prev_pts, config_.max_corners, config_.quality_level, config_.min_distance);
         if (prev_pts.empty()) {
             // No features to track - set to WAITING status
             directions_map[directions_map.size() - 1][0] = 0;
@@ -335,8 +387,8 @@ float MotionDetector::detectLKOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray, c
         }
 
         cv::cuda::GpuMat d_prev_pts(prev_pts);
-        cv::cuda::GpuMat d_gray_prev(gray_previous);
-        cv::cuda::GpuMat d_gray(gray);
+        cv::cuda::GpuMat d_gray_prev(gray_filtered_previous);
+        cv::cuda::GpuMat d_gray(gray_filtered);
         cv::cuda::GpuMat d_curr_pts, d_status, d_err;
 
         auto lk = cv::cuda::SparsePyrLKOpticalFlow::create();
@@ -361,8 +413,8 @@ float MotionDetector::detectLKOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray, c
     } else if (config_.use_gpu && cv::ocl::haveOpenCL()) {
         cv::UMat u_gray_previous, u_gray;
 
-        gray_previous.copyTo(u_gray_previous);
-        gray.copyTo(u_gray);
+        gray_filtered_previous.copyTo(u_gray_previous);
+        gray_filtered.copyTo(u_gray);
 
         cv::goodFeaturesToTrack(u_gray_previous, prev_pts, config_.max_corners, config_.quality_level, config_.min_distance);
 
@@ -377,7 +429,7 @@ float MotionDetector::detectLKOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray, c
         }
         cv::calcOpticalFlowPyrLK(u_gray_previous, u_gray, prev_pts, curr_pts, status, err);
     } else {
-        cv::goodFeaturesToTrack(gray_previous, prev_pts, config_.max_corners, config_.quality_level, config_.min_distance);
+        cv::goodFeaturesToTrack(gray_filtered_previous, prev_pts, config_.max_corners, config_.quality_level, config_.min_distance);
 
         if (prev_pts.empty()) {
             // No features to track - set to WAITING status
@@ -389,7 +441,7 @@ float MotionDetector::detectLKOpticalFlowMotion(cv::Mat& frame, cv::Mat& gray, c
             return -1.0f;
         }
 
-        cv::calcOpticalFlowPyrLK(gray_previous, gray, prev_pts, curr_pts, status, err);
+        cv::calcOpticalFlowPyrLK(gray_filtered_previous, gray, prev_pts, curr_pts, status, err);
     }
 
     std::vector<float> move_sense;
@@ -867,7 +919,7 @@ void MotionDetector::run() {
         }
     }
 
-    saveBenchmarkResults(config_.use_gpu, config_.algorithm, results);
+    saveBenchmarkResults(config_.use_gpu, config_.algorithm, results, config_.video_annot);
 
     cap.release();
     cv::destroyAllWindows();

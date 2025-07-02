@@ -10,6 +10,7 @@
 
 struct AppConfig {
     std::string video_src;
+    std::string video_annot;
     int size;
     int seek;
     int seek_end;

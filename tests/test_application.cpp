@@ -3,11 +3,8 @@
 #include "../motion-detector/motion_detector.h"
 #include "../benchmark/benchmark.h"
 
-TEST(BenchmarksTest, TestFarneSingleCPU) {
+TEST(BenchmarksTest, TestFarneSingleCPUCrowd) {
     const std::string INPUT_FILE = "../../config/params_input_file.yml";
-
-    std::cout << "Current working directory: "
-          << std::filesystem::current_path() << std::endl;
 
     try {
         MotionDetector detector(INPUT_FILE);
@@ -15,6 +12,9 @@ TEST(BenchmarksTest, TestFarneSingleCPU) {
         detector.getConfig().use_gpu = false;
         detector.getConfig().use_multi_thread = false;
         detector.getConfig().debug = false;
+        detector.getConfig().video_src = "../../input/abbeyroad1.mp4";
+        detector.getConfig().video_annot = "../../input/abbeyroad1_annotation.csv";
+        detector.getConfig().seek_end = 2500;
         detector.run();
     } catch (const std::exception& e) {
         std::cout << e.what() << std::endl;
@@ -23,11 +23,48 @@ TEST(BenchmarksTest, TestFarneSingleCPU) {
     ASSERT_TRUE(std::filesystem::exists("results/cpu_FARNE_benchmark_" + getTimestamp()) + ".csv") << "Benchmark file was not created.";
 }
 
-TEST(BenchmarksTest, TestFarneMultiCPU) {
+TEST(BenchmarksTest, TestFarneSingleCPUDayShadow) {
     const std::string INPUT_FILE = "../../config/params_input_file.yml";
 
-    std::cout << "Current working directory: "
-          << std::filesystem::current_path() << std::endl;
+    try {
+        MotionDetector detector(INPUT_FILE);
+        detector.getConfig().algorithm = "FARNE";
+        detector.getConfig().use_gpu = false;
+        detector.getConfig().use_multi_thread = false;
+        detector.getConfig().debug = false;
+        detector.getConfig().video_src = "../../input/abbeyroad2.mp4";
+        detector.getConfig().video_annot = "../../input/abbeyroad2_annotation.csv";
+        detector.getConfig().seek_end = 2500;
+        detector.run();
+    } catch (const std::exception& e) {
+        std::cout << e.what() << std::endl;
+    }
+
+    ASSERT_TRUE(std::filesystem::exists("results/cpu_FARNE_benchmark_" + getTimestamp()) + ".csv") << "Benchmark file was not created.";
+}
+
+TEST(BenchmarksTest, TestFarneSingleCPUNight) {
+    const std::string INPUT_FILE = "../../config/params_input_file.yml";
+
+    try {
+        MotionDetector detector(INPUT_FILE);
+        detector.getConfig().algorithm = "FARNE";
+        detector.getConfig().use_gpu = false;
+        detector.getConfig().use_multi_thread = false;
+        detector.getConfig().debug = false;
+        detector.getConfig().video_src = "../../input/abbeyroad3.mp4";
+        detector.getConfig().video_annot = "../../input/abbeyroad3_annotation.csv";
+        detector.getConfig().seek_end = 2500;
+        detector.run();
+    } catch (const std::exception& e) {
+        std::cout << e.what() << std::endl;
+    }
+
+    ASSERT_TRUE(std::filesystem::exists("results/cpu_FARNE_benchmark_" + getTimestamp()) + ".csv") << "Benchmark file was not created.";
+}
+
+TEST(BenchmarksTest, TestFarneMultiCPUCrowd) {
+    const std::string INPUT_FILE = "../../config/params_input_file.yml";
 
     try {
         MotionDetector detector(INPUT_FILE);
@@ -35,6 +72,9 @@ TEST(BenchmarksTest, TestFarneMultiCPU) {
         detector.getConfig().use_gpu = false;
         detector.getConfig().use_multi_thread = true;
         detector.getConfig().debug = false;
+        detector.getConfig().video_src = "../../input/abbeyroad1.mp4";
+        detector.getConfig().video_annot = "../../input/abbeyroad1_annotation.csv";
+        detector.getConfig().seek_end = 2500;
         detector.run();
     } catch (const std::exception& e) {
         std::cout << e.what() << std::endl;
@@ -43,11 +83,48 @@ TEST(BenchmarksTest, TestFarneMultiCPU) {
     ASSERT_TRUE(std::filesystem::exists("results/cpu_FARNE_benchmark_" + getTimestamp()) + ".csv") << "Benchmark file was not created.";
 }
 
-TEST(BenchmarksTest, TestFarneGPU) {
+TEST(BenchmarksTest, TestFarneMultiCPUDayShadow) {
     const std::string INPUT_FILE = "../../config/params_input_file.yml";
 
-    std::cout << "Current working directory: "
-          << std::filesystem::current_path() << std::endl;
+    try {
+        MotionDetector detector(INPUT_FILE);
+        detector.getConfig().algorithm = "FARNE";
+        detector.getConfig().use_gpu = false;
+        detector.getConfig().use_multi_thread = true;
+        detector.getConfig().debug = false;
+        detector.getConfig().video_src = "../../input/abbeyroad2.mp4";
+        detector.getConfig().video_annot = "../../input/abbeyroad2_annotation.csv";
+        detector.getConfig().seek_end = 2500;
+        detector.run();
+    } catch (const std::exception& e) {
+        std::cout << e.what() << std::endl;
+    }
+
+    ASSERT_TRUE(std::filesystem::exists("results/cpu_FARNE_benchmark_" + getTimestamp()) + ".csv") << "Benchmark file was not created.";
+}
+
+TEST(BenchmarksTest, TestFarneMultiCPUNight) {
+    const std::string INPUT_FILE = "../../config/params_input_file.yml";
+
+    try {
+        MotionDetector detector(INPUT_FILE);
+        detector.getConfig().algorithm = "FARNE";
+        detector.getConfig().use_gpu = false;
+        detector.getConfig().use_multi_thread = true;
+        detector.getConfig().debug = false;
+        detector.getConfig().video_src = "../../input/abbeyroad3.mp4";
+        detector.getConfig().video_annot = "../../input/abbeyroad3_annotation.csv";
+        detector.getConfig().seek_end = 2500;
+        detector.run();
+    } catch (const std::exception& e) {
+        std::cout << e.what() << std::endl;
+    }
+
+    ASSERT_TRUE(std::filesystem::exists("results/cpu_FARNE_benchmark_" + getTimestamp()) + ".csv") << "Benchmark file was not created.";
+}
+
+TEST(BenchmarksTest, TestFarneGPUCrowd) {
+    const std::string INPUT_FILE = "../../config/params_input_file.yml";
 
     try {
         MotionDetector detector(INPUT_FILE);
@@ -55,6 +132,9 @@ TEST(BenchmarksTest, TestFarneGPU) {
         detector.getConfig().use_gpu = true;
         detector.getConfig().use_multi_thread = false;
         detector.getConfig().debug = false;
+        detector.getConfig().video_src = "../../input/abbeyroad1.mp4";
+        detector.getConfig().video_annot = "../../input/abbeyroad1_annotation.csv";
+        detector.getConfig().seek_end = 2500;
         detector.run();
     } catch (const std::exception& e) {
         std::cout << e.what() << std::endl;
@@ -63,11 +143,48 @@ TEST(BenchmarksTest, TestFarneGPU) {
     ASSERT_TRUE(std::filesystem::exists("results/gpu_FARNE_benchmark_" + getTimestamp()) + ".csv") << "Benchmark file was not created.";
 }
 
-TEST(BenchmarksTest, TestLKMultiCPU) {
+TEST(BenchmarksTest, TestFarneGPUDayShadow) {
     const std::string INPUT_FILE = "../../config/params_input_file.yml";
 
-    std::cout << "Current working directory: "
-          << std::filesystem::current_path() << std::endl;
+    try {
+        MotionDetector detector(INPUT_FILE);
+        detector.getConfig().algorithm = "FARNE";
+        detector.getConfig().use_gpu = true;
+        detector.getConfig().use_multi_thread = false;
+        detector.getConfig().debug = false;
+        detector.getConfig().video_src = "../../input/abbeyroad2.mp4";
+        detector.getConfig().video_annot = "../../input/abbeyroad2_annotation.csv";
+        detector.getConfig().seek_end = 2500;
+        detector.run();
+    } catch (const std::exception& e) {
+        std::cout << e.what() << std::endl;
+    }
+
+    ASSERT_TRUE(std::filesystem::exists("results/gpu_FARNE_benchmark_" + getTimestamp()) + ".csv") << "Benchmark file was not created.";
+}
+
+TEST(BenchmarksTest, TestFarneGPUNight) {
+    const std::string INPUT_FILE = "../../config/params_input_file.yml";
+
+    try {
+        MotionDetector detector(INPUT_FILE);
+        detector.getConfig().algorithm = "FARNE";
+        detector.getConfig().use_gpu = true;
+        detector.getConfig().use_multi_thread = false;
+        detector.getConfig().debug = false;
+        detector.getConfig().video_src = "../../input/abbeyroad3.mp4";
+        detector.getConfig().video_annot = "../../input/abbeyroad3_annotation.csv";
+        detector.getConfig().seek_end = 2500;
+        detector.run();
+    } catch (const std::exception& e) {
+        std::cout << e.what() << std::endl;
+    }
+
+    ASSERT_TRUE(std::filesystem::exists("results/gpu_FARNE_benchmark_" + getTimestamp()) + ".csv") << "Benchmark file was not created.";
+}
+
+TEST(BenchmarksTest, TestLKMultiCPUCrowd) {
+    const std::string INPUT_FILE = "../../config/params_input_file.yml";
 
     try {
         MotionDetector detector(INPUT_FILE);
@@ -75,6 +192,9 @@ TEST(BenchmarksTest, TestLKMultiCPU) {
         detector.getConfig().use_gpu = false;
         detector.getConfig().use_multi_thread = true;
         detector.getConfig().debug = false;
+        detector.getConfig().video_src = "../../input/abbeyroad1.mp4";
+        detector.getConfig().video_annot = "../../input/abbeyroad1_annotation.csv";
+        detector.getConfig().seek_end = 2500;
         detector.run();
     } catch (const std::exception& e) {
         std::cout << e.what() << std::endl;
@@ -83,11 +203,48 @@ TEST(BenchmarksTest, TestLKMultiCPU) {
     ASSERT_TRUE(std::filesystem::exists("results/cpu_LK_benchmark_" + getTimestamp()) + ".csv") << "Benchmark file was not created.";
 }
 
-TEST(BenchmarksTest, TestLKGPU) {
+TEST(BenchmarksTest, TestLKMultiCPUDayShadow) {
     const std::string INPUT_FILE = "../../config/params_input_file.yml";
 
-    std::cout << "Current working directory: "
-          << std::filesystem::current_path() << std::endl;
+    try {
+        MotionDetector detector(INPUT_FILE);
+        detector.getConfig().algorithm = "LK";
+        detector.getConfig().use_gpu = false;
+        detector.getConfig().use_multi_thread = true;
+        detector.getConfig().debug = false;
+        detector.getConfig().video_src = "../../input/abbeyroad2.mp4";
+        detector.getConfig().video_annot = "../../input/abbeyroad2_annotation.csv";
+        detector.getConfig().seek_end = 2500;
+        detector.run();
+    } catch (const std::exception& e) {
+        std::cout << e.what() << std::endl;
+    }
+
+    ASSERT_TRUE(std::filesystem::exists("results/cpu_LK_benchmark_" + getTimestamp()) + ".csv") << "Benchmark file was not created.";
+}
+
+TEST(BenchmarksTest, TestLKMultiCPUNight) {
+    const std::string INPUT_FILE = "../../config/params_input_file.yml";
+
+    try {
+        MotionDetector detector(INPUT_FILE);
+        detector.getConfig().algorithm = "LK";
+        detector.getConfig().use_gpu = false;
+        detector.getConfig().use_multi_thread = true;
+        detector.getConfig().debug = false;
+        detector.getConfig().video_src = "../../input/abbeyroad3.mp4";
+        detector.getConfig().video_annot = "../../input/abbeyroad3_annotation.csv";
+        detector.getConfig().seek_end = 2500;
+        detector.run();
+    } catch (const std::exception& e) {
+        std::cout << e.what() << std::endl;
+    }
+
+    ASSERT_TRUE(std::filesystem::exists("results/cpu_LK_benchmark_" + getTimestamp()) + ".csv") << "Benchmark file was not created.";
+}
+
+TEST(BenchmarksTest, TestLKGPUCrowd) {
+    const std::string INPUT_FILE = "../../config/params_input_file.yml";
 
     try {
         MotionDetector detector(INPUT_FILE);
@@ -95,6 +252,9 @@ TEST(BenchmarksTest, TestLKGPU) {
         detector.getConfig().use_gpu = true;
         detector.getConfig().use_multi_thread = false;
         detector.getConfig().debug = false;
+        detector.getConfig().video_src = "../../input/abbeyroad1.mp4";
+        detector.getConfig().video_annot = "../../input/abbeyroad1_annotation.csv";
+        detector.getConfig().seek_end = 2500;
         detector.run();
     } catch (const std::exception& e) {
         std::cout << e.what() << std::endl;
@@ -103,11 +263,48 @@ TEST(BenchmarksTest, TestLKGPU) {
     ASSERT_TRUE(std::filesystem::exists("results/gpu_LK_benchmark_" + getTimestamp()) + ".csv") << "Benchmark file was not created.";
 }
 
-TEST(BenchmarksTest, TestYOLOSingleCPU) {
+TEST(BenchmarksTest, TestLKGPUDayShadow) {
     const std::string INPUT_FILE = "../../config/params_input_file.yml";
 
-    std::cout << "Current working directory: "
-          << std::filesystem::current_path() << std::endl;
+    try {
+        MotionDetector detector(INPUT_FILE);
+        detector.getConfig().algorithm = "LK";
+        detector.getConfig().use_gpu = true;
+        detector.getConfig().use_multi_thread = false;
+        detector.getConfig().debug = false;
+        detector.getConfig().video_src = "../../input/abbeyroad2.mp4";
+        detector.getConfig().video_annot = "../../input/abbeyroad2_annotation.csv";
+        detector.getConfig().seek_end = 2500;
+        detector.run();
+    } catch (const std::exception& e) {
+        std::cout << e.what() << std::endl;
+    }
+
+    ASSERT_TRUE(std::filesystem::exists("results/gpu_LK_benchmark_" + getTimestamp()) + ".csv") << "Benchmark file was not created.";
+}
+
+TEST(BenchmarksTest, TestLKGPUNight) {
+    const std::string INPUT_FILE = "../../config/params_input_file.yml";
+
+    try {
+        MotionDetector detector(INPUT_FILE);
+        detector.getConfig().algorithm = "LK";
+        detector.getConfig().use_gpu = true;
+        detector.getConfig().use_multi_thread = false;
+        detector.getConfig().debug = false;
+        detector.getConfig().video_src = "../../input/abbeyroad3.mp4";
+        detector.getConfig().video_annot = "../../input/abbeyroad3_annotation.csv";
+        detector.getConfig().seek_end = 2500;
+        detector.run();
+    } catch (const std::exception& e) {
+        std::cout << e.what() << std::endl;
+    }
+
+    ASSERT_TRUE(std::filesystem::exists("results/gpu_LK_benchmark_" + getTimestamp()) + ".csv") << "Benchmark file was not created.";
+}
+
+TEST(BenchmarksTest, TestYOLOSingleCPUCrowd) {
+    const std::string INPUT_FILE = "../../config/params_input_file.yml";
 
     try {
         MotionDetector detector(INPUT_FILE);
@@ -115,6 +312,9 @@ TEST(BenchmarksTest, TestYOLOSingleCPU) {
         detector.getConfig().use_gpu = false;
         detector.getConfig().use_multi_thread = false;
         detector.getConfig().debug = false;
+        detector.getConfig().video_src = "../../input/abbeyroad1.mp4";
+        detector.getConfig().video_annot = "../../input/abbeyroad1_annotation.csv";
+        detector.getConfig().seek_end = 2500;
         detector.run();
     } catch (const std::exception& e) {
         std::cout << e.what() << std::endl;
@@ -123,11 +323,48 @@ TEST(BenchmarksTest, TestYOLOSingleCPU) {
     ASSERT_TRUE(std::filesystem::exists("results/cpu_YOLO_benchmark_" + getTimestamp()) + ".csv") << "Benchmark file was not created.";
 }
 
-TEST(BenchmarksTest, TestYOLOGPU) {
+TEST(BenchmarksTest, TestYOLOSingleCPUDayShadow) {
     const std::string INPUT_FILE = "../../config/params_input_file.yml";
 
-    std::cout << "Current working directory: "
-          << std::filesystem::current_path() << std::endl;
+    try {
+        MotionDetector detector(INPUT_FILE);
+        detector.getConfig().algorithm = "YOLO";
+        detector.getConfig().use_gpu = false;
+        detector.getConfig().use_multi_thread = false;
+        detector.getConfig().debug = false;
+        detector.getConfig().video_src = "../../input/abbeyroad2.mp4";
+        detector.getConfig().video_annot = "../../input/abbeyroad2_annotation.csv";
+        detector.getConfig().seek_end = 2500;
+        detector.run();
+    } catch (const std::exception& e) {
+        std::cout << e.what() << std::endl;
+    }
+
+    ASSERT_TRUE(std::filesystem::exists("results/cpu_YOLO_benchmark_" + getTimestamp()) + ".csv") << "Benchmark file was not created.";
+}
+
+TEST(BenchmarksTest, TestYOLOSingleCPUNight) {
+    const std::string INPUT_FILE = "../../config/params_input_file.yml";
+
+    try {
+        MotionDetector detector(INPUT_FILE);
+        detector.getConfig().algorithm = "YOLO";
+        detector.getConfig().use_gpu = false;
+        detector.getConfig().use_multi_thread = false;
+        detector.getConfig().debug = false;
+        detector.getConfig().video_src = "../../input/abbeyroad3.mp4";
+        detector.getConfig().video_annot = "../../input/abbeyroad3_annotation.csv";
+        detector.getConfig().seek_end = 2500;
+        detector.run();
+    } catch (const std::exception& e) {
+        std::cout << e.what() << std::endl;
+    }
+
+    ASSERT_TRUE(std::filesystem::exists("results/cpu_YOLO_benchmark_" + getTimestamp()) + ".csv") << "Benchmark file was not created.";
+}
+
+TEST(BenchmarksTest, TestYOLOGPUCrowd) {
+    const std::string INPUT_FILE = "../../config/params_input_file.yml";
 
     try {
         MotionDetector detector(INPUT_FILE);
@@ -135,6 +372,49 @@ TEST(BenchmarksTest, TestYOLOGPU) {
         detector.getConfig().use_gpu = true;
         detector.getConfig().use_multi_thread = false;
         detector.getConfig().debug = false;
+        detector.getConfig().video_src = "../../input/abbeyroad1.mp4";
+        detector.getConfig().video_annot = "../../input/abbeyroad1_annotation.csv";
+        detector.getConfig().seek_end = 2500;
+        detector.run();
+    } catch (const std::exception& e) {
+        std::cout << e.what() << std::endl;
+    }
+
+    ASSERT_TRUE(std::filesystem::exists("results/gpu_YOLO_benchmark_" + getTimestamp()) + ".csv") << "Benchmark file was not created.";
+}
+
+TEST(BenchmarksTest, TestYOLOGPUDayShadow) {
+    const std::string INPUT_FILE = "../../config/params_input_file.yml";
+
+    try {
+        MotionDetector detector(INPUT_FILE);
+        detector.getConfig().algorithm = "YOLO";
+        detector.getConfig().use_gpu = true;
+        detector.getConfig().use_multi_thread = false;
+        detector.getConfig().debug = false;
+        detector.getConfig().video_src = "../../input/abbeyroad2.mp4";
+        detector.getConfig().video_annot = "../../input/abbeyroad2_annotation.csv";
+        detector.getConfig().seek_end = 2500;
+        detector.run();
+    } catch (const std::exception& e) {
+        std::cout << e.what() << std::endl;
+    }
+
+    ASSERT_TRUE(std::filesystem::exists("results/gpu_YOLO_benchmark_" + getTimestamp()) + ".csv") << "Benchmark file was not created.";
+}
+
+TEST(BenchmarksTest, TestYOLOGPUNight) {
+    const std::string INPUT_FILE = "../../config/params_input_file.yml";
+
+    try {
+        MotionDetector detector(INPUT_FILE);
+        detector.getConfig().algorithm = "YOLO";
+        detector.getConfig().use_gpu = true;
+        detector.getConfig().use_multi_thread = false;
+        detector.getConfig().debug = false;
+        detector.getConfig().video_src = "../../input/abbeyroad3.mp4";
+        detector.getConfig().video_annot = "../../input/abbeyroad3_annotation.csv";
+        detector.getConfig().seek_end = 2500;
         detector.run();
     } catch (const std::exception& e) {
         std::cout << e.what() << std::endl;

@@ -105,12 +105,16 @@ void saveResultToCSV(const std::string& filename,
     double ground_not_crossing = 0;
 
     std::unordered_map<int, bool> ground_truth_map;
-    for (const auto& gt : ground_truth) {
-        ground_truth_map[gt.frame_index] = gt.crossing_intent;
-        if (gt.crossing_intent)
-            ground_crossing++;
-        else
-            ground_not_crossing++;
+    for (const auto& r : results) {
+        auto it = std::find_if(ground_truth.begin(), ground_truth.end(),
+                               [&](const CrossIntent& gt) { return gt.frame_index == r.frame_index; });
+        if (it != ground_truth.end()) {
+            ground_truth_map[it->frame_index] = it->crossing_intent;
+            if (it->crossing_intent)
+                ground_crossing++;
+            else
+                ground_not_crossing++;
+        }
     }
 
     for (const auto& r : results) {
@@ -153,7 +157,7 @@ std::string getTimestamp() {
     return oss.str();
 }
 
-void saveBenchmarkResults(bool use_gpu, const std::string& algorithm, const std::vector<BenchmarkResult>& results) {
+void saveBenchmarkResults(bool use_gpu, const std::string& algorithm, const std::vector<BenchmarkResult>& results, const std::string& annotationFile) {
     std::string results_dir = "results";
     if (!std::filesystem::exists(results_dir)) {
         if (!std::filesystem::create_directory(results_dir)) {
@@ -168,7 +172,7 @@ void saveBenchmarkResults(bool use_gpu, const std::string& algorithm, const std:
     std::cout << "Saving benchmark results to: " << filename << std::endl;
     std::cout << "Current working directory: " << std::filesystem::current_path() << std::endl;
 
-    auto ground_truth = loadGroundTruthCrossingIntent("../../input/abbeyroad2_annotation.csv");
+    auto ground_truth = loadGroundTruthCrossingIntent(annotationFile);
 
     saveResultToCSV(filename, results, ground_truth);
 }

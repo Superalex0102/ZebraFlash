@@ -1,9 +1,10 @@
 {
   # Main parameters
-  video_src: "../../input/abbeyroad2.mkv",  # Path of the input file, use RTSP for real IP camera. e.g: rtsp://localhost:8554/test
+  video_src: "../../input/abbeyroad3.mp4",  # Path of the input file, use RTSP for real IP camera. e.g: rtsp://localhost:8554/test
+  video_annot: "../../input/abbeyroad3_annotation.csv",  # Path of the annotation CSV file, the format should be: Frame,Intent (id,not-crossing or crossing)
   res_ratio: 0.14,        # Scale resolution for computing optical flow
   # The image processing area (area of interest) can be defined with the following margins
-  upper_margin: 300,      # MASK_Y_MIN
+  upper_margin: 250,      # MASK_Y_MIN
   bottom_margin: 500,     # MASK_Y_MAX
   left_margin: 950,       # MASK_X_MIN
   right_margin: 170,      # MASK_X_MAX
@@ -22,9 +23,9 @@
   poly_sigma: 1.1,        # Standard deviation of the Gaussian that is used to smooth derivatives used as a basis for the polynomial expansion
 
   # Parameters to fine tune Lucas-Kanade algorithm
-  max_corners: 500,
+  max_corners: 1000,
   quality_level: 0.01,
-  min_distance: 2,
+  min_distance: 5,
 
   # Other parameters
   threshold: 2.5,         # Threshold value for magnitude
@@ -32,12 +33,12 @@
   binary_threshold: 150,  # Only take different areas that are different enough (0-255)
   threshold_count: 0,     # minimum number of different pixels from the background model
   seek: 0,            # video starting position in frames
-  seek_end: -1,            # video ending position in frames
-  debug: true,            # debug messages and screens displayed
+  seek_end: 2500,            # video ending position in frames
+  debug: false,            # debug messages and screens displayed
   use_gpu: true,            # GPU acceleration is being used
   use_multi_thread: false,            # Multi thread is being used
   thread_amount: -1,            # number of threads used for multi threading tasks, -1 for auto
-  algorithm: "LK",            # the algorithm used for processing the images. FARNE, LK, YOLO
+  algorithm: "YOLO",            # the algorithm used for processing the images. FARNE, LK, YOLO
 
   #YOLO
   yolo_weights_path: "../../input/yolo/yolov4-tiny.weights",
